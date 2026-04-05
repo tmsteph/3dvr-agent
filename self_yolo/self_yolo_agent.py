@@ -12,6 +12,7 @@ ALLOWED = {
     "self_yolo/self_update_agent.py",
     "self_yolo/self_yolo_agent.py",
     "self_yolo/self_yolo_loop.py",
+    "self_yolo/rollback.py",
     "pyproject.toml",
     "README.md",
 }
@@ -76,14 +77,9 @@ def main():
         print(f"Target file does not exist: {path}")
         sys.exit(3)
 
-    
-    # --- AUTO CHECKPOINT ---
-    subprocess.run(["git","add","."], cwd=REPO)
-    subprocess.run(["git","commit","-m","checkpoint before self-yolo-agent"], cwd=REPO)
-    print("[self-yolo-agent] checkpoint created", flush=True)
-    # --- END CHECKPOINT ---
-
     orig = path.read_text(encoding="utf-8")
+    say(f"target: {target}")
+    say(f"file size: {len(orig)} chars")
 
     prompt = f"""Rewrite this file based on the task.
 
@@ -105,6 +101,7 @@ FILE PATH: {target}
 FILE:
 {orig}
 """
+    say(f"prompt size: {len(prompt)} chars")
 
     payload = {
         "prompt": prompt,
@@ -116,7 +113,10 @@ FILE:
     say(f"editing {target} ...")
     rule("MODEL OUTPUT")
 
+    started = time.time()
+
     if target.endswith(".py"):
+        say("using non-stream mode for Python")
         res = subprocess.run(
             ["curl", "-s", URL, "-H", "Content-Type: application/json", "-d", json.dumps(payload)],
             capture_output=True,
@@ -128,6 +128,7 @@ FILE:
         data = json.loads(res.stdout)
         out = clean_text(data.get("content", ""))
         print(out, end="", flush=True)
+        say(f"completed in {time.time() - started:.1f}s")
     else:
         proc = subprocess.Popen(
             ["curl", "-N", "-s", URL, "-H", "Content-Type: application/json", "-d", json.dumps(payload)],
@@ -138,10 +139,10 @@ FILE:
         )
 
         parts = []
-        start = time.time()
+        first_token = None
 
         for line in proc.stdout:
-            if time.time() - start > 60:
+            if time.time() - started > 60:
                 print("\n[self-yolo-agent] timeout reached")
                 proc.kill()
                 break
@@ -156,11 +157,15 @@ FILE:
                 continue
             text = data.get("content", "")
             if text:
+                if first_token is None:
+                    first_token = time.time()
+                    say(f"first token in {first_token - started:.1f}s")
                 print(text, end="", flush=True)
                 parts.append(text)
 
         proc.wait()
         print()
+        say(f"completed in {time.time() - started:.1f}s")
         out = clean_text("".join(parts))
         if not out.strip():
             print("Failed: empty response")
@@ -191,6 +196,9 @@ FILE:
         print("No meaningful changes.")
         tmp.unlink(missing_ok=True)
         sys.exit(0)
+
+    subprocess.run(["git","add","."], cwd=REPO)
+    subprocess.run(["git","commit","-m","checkpoint before self-yolo-agent"], cwd=REPO, capture_output=True, text=True)
 
     shutil.move(tmp, path)
     subprocess.run(["git", "add", target], cwd=REPO)
