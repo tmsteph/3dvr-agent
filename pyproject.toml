@@ -1,0 +1,7 @@
+[project]
+name = "3dvr-agent"
+version = "0.1.0"
+dependencies = []
+
+[project.scripts]
+self-yolo = "self_yolo.cli:main"

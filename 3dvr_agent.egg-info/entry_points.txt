@@ -1,0 +1,2 @@
+[console_scripts]
+self-yolo = self_yolo.cli:main

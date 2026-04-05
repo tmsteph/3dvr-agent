@@ -1,0 +1,8 @@
+pyproject.toml
+3dvr_agent.egg-info/PKG-INFO
+3dvr_agent.egg-info/SOURCES.txt
+3dvr_agent.egg-info/dependency_links.txt
+3dvr_agent.egg-info/entry_points.txt
+3dvr_agent.egg-info/top_level.txt
+self_yolo/__init__.py
+self_yolo/cli.py
