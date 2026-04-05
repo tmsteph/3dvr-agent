@@ -6,5 +6,6 @@ pyproject.toml
 3dvr_agent.egg-info/top_level.txt
 self_yolo/__init__.py
 self_yolo/cli.py
+self_yolo/self_update_agent.py
 self_yolo/yolo_app.py
 self_yolo/yolo_new_site.py
