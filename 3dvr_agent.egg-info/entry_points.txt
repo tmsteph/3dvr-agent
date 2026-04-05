@@ -1,2 +1,4 @@
 [console_scripts]
 self-yolo = self_yolo.cli:main
+yolo-app = self_yolo.yolo_app:main
+yolo-new-site = self_yolo.yolo_new_site:main

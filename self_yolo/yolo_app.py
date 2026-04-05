@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-import json, subprocess, sys, shutil, time
+import json, subprocess, sys, time
 from pathlib import Path
 
 REPO = Path.home() / "3dvr-site"
 URL = "http://127.0.0.1:8080/completion"
 
 def say(msg):
-    print(f"[self-yolo] {msg}", flush=True)
+    print(f"[yolo-app] {msg}", flush=True)
 
 def rule(title=""):
     bar = "=" * 56
-    if title:
-        print(f"\n{bar}\n{title}\n{bar}", flush=True)
-    else:
-        print(f"\n{bar}", flush=True)
+    print(f"\n{bar}\n{title}\n{bar}", flush=True)
 
 def ensure_server():
     chk = subprocess.run(["pgrep", "-f", "llama-server"], capture_output=True, text=True)
@@ -40,8 +37,7 @@ def clean_html(text):
     i = lower.find("<!doctype html>")
     if i != -1:
         text = text[i:]
-        lower = text.lower()
-    if "</html>" not in lower:
+    if "</html>" not in text.lower():
         text += "\n</html>"
     j = text.lower().find("</html>")
     if j != -1:
@@ -49,38 +45,33 @@ def clean_html(text):
     return text.strip() + "\n"
 
 def main():
-    if len(sys.argv) == 2:
-        target = "index.html"
-        task = sys.argv[1]
-    elif len(sys.argv) >= 3:
-        target = sys.argv[1]
-        task = sys.argv[2]
-    else:
-        print('Usage: self-yolo.py [file] "task"')
+    if len(sys.argv) < 3:
+        print('Usage: yolo-app "name" "prompt"')
         sys.exit(1)
+
+    name = sys.argv[1]
+    prompt = sys.argv[2]
 
     ensure_server()
 
-    path = REPO / target
-    say(f"target: {target}")
-    say("reading current file...")
-    orig = path.read_text(encoding="utf-8")
+    app_dir = REPO / "apps" / name
+    app_dir.mkdir(parents=True, exist_ok=True)
+    file_path = app_dir / "index.html"
 
-    prompt = f"""Rewrite this file based on the task.
-
-Task: {task}
-
-Return ONLY the full final file contents.
+    full_prompt = f"""Return ONLY valid complete HTML.
 Do not use markdown fences.
-Do not explain.
-Keep it complete and valid.
+Start with <!DOCTYPE html>.
+End with </html>.
+Use inline CSS only.
+Use a dark modern design.
+Do not invent broken internal links.
 
-FILE:
-{orig}
+Page topic: {prompt}
+Path: /apps/{name}
 """
 
     payload = {
-        "prompt": prompt,
+        "prompt": full_prompt,
         "n_predict": 1200,
         "temperature": 0.2,
         "stop": ["</html>"],
@@ -117,21 +108,15 @@ FILE:
     rule("POST-PROCESS")
 
     out = clean_html("".join(parts))
-    tmp = path.with_suffix(".new")
-    say("writing temp file...")
-    tmp.write_text(out, encoding="utf-8")
+    file_path.write_text(out, encoding="utf-8")
+    say(f"created {file_path}")
 
-    if tmp.stat().st_size > 0:
-        say("replacing target file...")
-        shutil.move(tmp, path)
-        say("committing changes...")
-        subprocess.run(["git", "add", target], cwd=REPO)
-        subprocess.run(["git", "commit", "-m", "self-yolo update"], cwd=REPO)
-        rule("DONE")
-        say(f"updated: {target}")
-    else:
-        say("failed: empty output")
-        sys.exit(2)
+    subprocess.run(["git", "add", str(file_path.relative_to(REPO))], cwd=REPO)
+    subprocess.run(["git", "commit", "-m", f"Add app {name}"], cwd=REPO)
+    rule("DONE")
+    say("pushing...")
+    subprocess.run(["git", "push"], cwd=REPO)
+    say("deployed via Vercel (git push)")
 
 if __name__ == "__main__":
     main()
