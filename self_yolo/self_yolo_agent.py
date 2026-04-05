@@ -1,5 +1,7 @@
+import threading
+import itertools
 #!/usr/bin/env python3
-import json, subprocess, sys, shutil, time
+import json, subprocess, sys, shutil, time, threading, itertools
 from pathlib import Path
 
 REPO = Path.home() / "3dvr-agent"
@@ -115,6 +117,18 @@ FILE:
 
     started = time.time()
 
+    spinner_running = True
+    def spinner():
+        for c in itertools.cycle("|/-\\"):
+            if not spinner_running:
+                break
+            print(f"\r[self-yolo-agent] waiting {c}", end="", flush=True)
+            time.sleep(0.1)
+
+    spin_thread = threading.Thread(target=spinner)
+    spin_thread.start()
+
+
     if target.endswith(".py"):
         say("using non-stream mode for Python")
         res = subprocess.run(
@@ -158,6 +172,11 @@ FILE:
             text = data.get("content", "")
             if text:
                 if first_token is None:
+
+                    spinner_running = False
+                    spin_thread.join()
+                    print("\r", end="", flush=True)
+
                     first_token = time.time()
                     say(f"first token in {first_token - started:.1f}s")
                 print(text, end="", flush=True)
