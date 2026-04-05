@@ -109,6 +109,7 @@ FILE:
         "prompt": prompt,
         "n_predict": 1800,
         "temperature": 0.2,
+        "repeat_penalty": 1.15,
         "stream": not target.endswith(".py"),
     }
 
