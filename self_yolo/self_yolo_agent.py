@@ -43,6 +43,31 @@ def ensure_server():
     time.sleep(5)
     say("llama-server started")
 
+def dedupe_markdown_sections(text):
+    lines = text.splitlines()
+    out = []
+    seen_blocks = set()
+    block = []
+
+    def flush_block():
+        nonlocal block
+        if not block:
+            return
+        joined = "\n".join(block).strip()
+        key = joined[:400]
+        if joined and key not in seen_blocks:
+            seen_blocks.add(key)
+            out.extend(block)
+            out.append("")
+        block = []
+
+    for line in lines:
+        if line.strip() == "---" or line.startswith("# "):
+            flush_block()
+        block.append(line)
+    flush_block()
+    return "\n".join(out).strip() + "\n"
+
 def clean_text(text):
     return (
         text.replace("```python", "")
@@ -107,9 +132,10 @@ FILE:
     stream = target.endswith(".html")
     payload = {
         "prompt": prompt,
-        "n_predict": 1200 if stream else 600,
+        "n_predict": 1200 if stream else 220,
         "temperature": 0.2,
-        "repeat_penalty": 1.2,
+        "repeat_penalty": 1.3,
+        "stop": ["\n---\n# 3dvr-agent", "\n# 3dvr-agent\n# 3dvr-agent"],
         "stream": stream,
     }
 
@@ -129,6 +155,8 @@ FILE:
             sys.exit(4)
         data = json.loads(res.stdout)
         out = clean_text(data.get("content", ""))
+        if target.endswith(".md"):
+            out = dedupe_markdown_sections(out)
         print(out, end="", flush=True)
         say(f"completed in {time.time() - started:.1f}s")
     else:
