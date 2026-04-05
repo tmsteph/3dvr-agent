@@ -1,7 +1,5 @@
-import threading
-import itertools
 #!/usr/bin/env python3
-import json, subprocess, sys, shutil, time, threading, itertools
+import json, subprocess, sys, shutil, time
 from pathlib import Path
 
 REPO = Path.home() / "3dvr-agent"
@@ -91,6 +89,7 @@ STRICT RULES:
 - Use correct formatting for this file type.
 - No placeholders like example.com unless already present.
 - Keep it concise and production-ready.
+- Do not repeat sections.
 
 Task: {task}
 
@@ -105,33 +104,21 @@ FILE:
 """
     say(f"prompt size: {len(prompt)} chars")
 
+    stream = target.endswith(".html")
     payload = {
         "prompt": prompt,
-        "n_predict": 1800,
+        "n_predict": 1200 if stream else 600,
         "temperature": 0.2,
-        "repeat_penalty": 1.15,
-        "stream": not target.endswith(".py"),
+        "repeat_penalty": 1.2,
+        "stream": stream,
     }
 
     say(f"editing {target} ...")
     rule("MODEL OUTPUT")
-
     started = time.time()
 
-    spinner_running = True
-    def spinner():
-        for c in itertools.cycle("|/-\\"):
-            if not spinner_running:
-                break
-            print(f"\r[self-yolo-agent] waiting {c}", end="", flush=True)
-            time.sleep(0.1)
-
-    spin_thread = threading.Thread(target=spinner)
-    spin_thread.start()
-
-
-    if target.endswith(".py"):
-        say("using non-stream mode for Python")
+    if not stream:
+        say("using non-stream mode")
         res = subprocess.run(
             ["curl", "-s", URL, "-H", "Content-Type: application/json", "-d", json.dumps(payload)],
             capture_output=True,
@@ -154,10 +141,11 @@ FILE:
         )
 
         parts = []
+        seen_tail = set()
         first_token = None
 
         for line in proc.stdout:
-            if time.time() - started > 60:
+            if time.time() - started > 45:
                 print("\n[self-yolo-agent] timeout reached")
                 proc.kill()
                 break
@@ -173,15 +161,17 @@ FILE:
             text = data.get("content", "")
             if text:
                 if first_token is None:
-
-                    spinner_running = False
-                    spin_thread.join()
-                    print("\r", end="", flush=True)
-
                     first_token = time.time()
                     say(f"first token in {first_token - started:.1f}s")
                 print(text, end="", flush=True)
                 parts.append(text)
+                joined = "".join(parts)
+                tail = joined[-400:]
+                if tail in seen_tail and len(tail.strip()) > 80:
+                    print("\n[self-yolo-agent] repetition detected, stopping")
+                    proc.kill()
+                    break
+                seen_tail.add(tail)
 
         proc.wait()
         print()
@@ -198,7 +188,7 @@ FILE:
     bak.write_text(orig, encoding="utf-8")
     tmp.write_text(out, encoding="utf-8")
 
-    if len(out.strip()) < max(200, len(orig.strip()) // 4):
+    if len(out.strip()) < max(120, len(orig.strip()) // 4):
         print("Validation failed: output too small.")
         sys.exit(5)
 
@@ -221,10 +211,40 @@ FILE:
     subprocess.run(["git","commit","-m","checkpoint before self-yolo-agent"], cwd=REPO, capture_output=True, text=True)
 
     shutil.move(tmp, path)
+
+    if target.endswith(".py"):
+        final_chk = subprocess.run([sys.executable, "-m", "py_compile", str(path)], capture_output=True, text=True)
+        if final_chk.returncode != 0:
+            print(final_chk.stderr or final_chk.stdout)
+            print("[self-yolo-agent] final syntax check failed, restoring backup")
+            if bak.exists():
+                shutil.copy2(bak, path)
+            sys.exit(6)
+
     subprocess.run(["git", "add", target], cwd=REPO)
-    subprocess.run(["git", "commit", "-m", f"self-yolo-agent: improve {target}"], cwd=REPO)
-    subprocess.run(["git", "push"], cwd=REPO)
-    subprocess.run(["pip", "install", "--break-system-packages", "-e", str(REPO)], capture_output=True, text=True)
+    commit_res = subprocess.run(["git", "commit", "-m", f"self-yolo-agent: improve {target}"], cwd=REPO, capture_output=True, text=True)
+    if commit_res.returncode != 0:
+        print(commit_res.stdout or commit_res.stderr)
+        print("[self-yolo-agent] commit failed, restoring backup")
+        if bak.exists():
+            shutil.copy2(bak, path)
+        sys.exit(7)
+
+    push_res = subprocess.run(["git", "push"], cwd=REPO, capture_output=True, text=True)
+    if push_res.returncode != 0:
+        print(push_res.stdout or push_res.stderr)
+        print("[self-yolo-agent] push failed, restoring backup")
+        if bak.exists():
+            shutil.copy2(bak, path)
+        sys.exit(8)
+
+    reinstall_res = subprocess.run(["pip", "install", "--break-system-packages", "-e", str(REPO)], capture_output=True, text=True)
+    if reinstall_res.returncode != 0:
+        print(reinstall_res.stdout or reinstall_res.stderr)
+        print("[self-yolo-agent] reinstall failed, restoring backup")
+        if bak.exists():
+            shutil.copy2(bak, path)
+        sys.exit(9)
 
     rule("DONE")
     say(f"updated {target}")
