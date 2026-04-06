@@ -1,38 +1,49 @@
----
-
-
 # 3dvr-agent
 
-Local self-improving AI dev tool.
+Local self-improving AI dev tool built around llama.cpp, llama-server, GitHub, and Vercel.
 
-## Features
+## What it does
 
-- **Self-improvement**: The agent continuously learns and improves its performance based on user interactions.
-- **AI Development**:
+- edits project files with local AI
+- generates HTML pages and app folders
+- commits and pushes changes
+- deploys sites via GitHub → Vercel
+- supports rollback and self-updating workflows
 
+## Commands
 
-# 3dvr-agent
+self-yolo
+Improve a site file (usually index.html)
 
-Local self-improving AI dev tool.
+self-yolo-agent
+Improve files inside the 3dvr-agent repo
 
-## Features
+self-yolo-loop
+Run repeated improvement rounds
 
-- **Self-improvement**: The agent continuously learns and improves its performance based on user interactions.
-- **AI Development**
-- **Data Collection**:
-- **Visualization**:
+yolo-app
+Create a new app page in 3dvr-site
 
+yolo-new-site
+Create a new repo + starter site
 
-# 3dvr-agent
+rollback-agent
+Reset repo to previous state
 
-Local self-improving AI dev tool.
+## Installation
 
-## Features
+pip install --break-system-packages -e ~/3dvr-agent
 
-- **Self-improvement**: The agent continuously learns and improves its performance based on user interactions.
-- **AI Development**
+or
 
+pip install git+https://github.com/tmsteph/3dvr-agent.git
 
-# 3dvr-agent
+## Notes
 
-Local self-improving AI dev tool.
+- Requires llama-server running locally on 127.0.0.1:8080
+- HTML generation is the strongest workflow
+- Python and markdown edits should be reviewed
+
+## License
+
+Add your preferred license
