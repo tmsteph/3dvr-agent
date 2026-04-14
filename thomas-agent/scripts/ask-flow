@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 printf '%s\n' \
 "1. Pick 10 small businesses (Instagram, Google Maps, Facebook)" \
 "2. Run: ask-sales website" \
