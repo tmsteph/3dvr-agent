@@ -26,22 +26,32 @@ def rule(title=""):
 
 def ensure_server():
     chk = subprocess.run(["pgrep", "-f", "llama-server"], capture_output=True, text=True)
-    if chk.returncode == 0:
-        say("llama-server already running")
-        return
-    say("starting llama-server...")
-    subprocess.Popen(
-        [
-            str(Path.home() / "llama.cpp" / "build" / "bin" / "llama-server"),
-            "-hf", "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M",
-            "--host", "127.0.0.1",
-            "--port", "8080",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    time.sleep(5)
-    say("llama-server started")
+    if chk.returncode != 0:
+        say("starting llama-server...")
+        subprocess.Popen(
+            [
+                str(Path.home() / "llama.cpp" / "build" / "bin" / "llama-server"),
+                "-hf", "Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF:Q4_K_M",
+                "--host", "127.0.0.1",
+                "--port", "8080",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    say("waiting for llama-server health...")
+    for i in range(30):
+        health = subprocess.run(
+            ["curl", "-s", "http://127.0.0.1:8080/health"],
+            capture_output=True, text=True
+        )
+        if health.returncode == 0 and health.stdout.strip():
+            say("llama-server ready")
+            return
+        time.sleep(1)
+
+    print("[self-yolo-agent] llama-server did not become ready in time")
+    sys.exit(10)
 
 def dedupe_markdown_sections(text):
     lines = text.splitlines()
@@ -68,25 +78,70 @@ def dedupe_markdown_sections(text):
     flush_block()
     return "\n".join(out).strip() + "\n"
 
+
+def extract_markdown_section(text, section_name):
+    lines = text.splitlines()
+    target = section_name.strip().lower()
+    start = None
+    end = None
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("## ") and stripped[3:].strip().lower() == target:
+            start = i
+            continue
+        if start is not None and stripped.startswith("## "):
+            end = i
+            break
+
+    if start is None:
+        return None, None, None
+
+    if end is None:
+        end = len(lines)
+
+    before = "\n".join(lines[:start]).rstrip()
+    section = "\n".join(lines[start:end]).strip()
+    after = "\n".join(lines[end:]).lstrip()
+    return before, section, after
+
 def clean_text(text):
-    return (
+    text = (
         text.replace("```python", "")
             .replace("```toml", "")
             .replace("```md", "")
             .replace("```html", "")
+            .replace("```bash", "")
             .replace("```", "")
-            .strip() + "\n"
+            .replace("-----BEGIN SOLUTION-----", "")
+            .replace("-----END SOLUTION-----", "")
+            .replace("-----BEGIN SECTION-----", "")
+            .replace("-----END SECTION-----", "")
     )
 
+    lines = []
+    for line in text.splitlines():
+        if line.strip() == "bash":
+            continue
+        lines.append(line)
+
+    return "\n".join(lines).strip() + "\n"
+
 def main():
-    if len(sys.argv) == 2:
+    preview = False
+    args = sys.argv[1:]
+    if args and args[0] in ("--preview", "-p"):
+        preview = True
+        args = args[1:]
+
+    if len(args) == 1:
         target = "README.md"
-        task = sys.argv[1]
-    elif len(sys.argv) >= 3:
-        target = sys.argv[1]
-        task = sys.argv[2]
+        task = args[0]
+    elif len(args) >= 2:
+        target = args[0]
+        task = args[1]
     else:
-        print('Usage: self-yolo-agent [file] "task"')
+        print('Usage: self-yolo-agent [--preview] [file] "task"')
         sys.exit(1)
 
     if target not in ALLOWED:
@@ -103,29 +158,84 @@ def main():
         sys.exit(3)
 
     orig = path.read_text(encoding="utf-8")
+    section_name = None
+    section_before = None
+    section_after = None
+
+    if target == "README.md":
+        lowered_task = task.lower()
+        if "section" in lowered_task:
+            markers = ["installation", "commands", "features", "usage", "notes", "license"]
+            for m in markers:
+                if m in lowered_task:
+                    section_name = m.title()
+                    break
+            if section_name:
+                extracted = extract_markdown_section(orig, section_name)
+                if extracted[0] is None:
+                    print(f"[self-yolo-agent] section not found: {section_name}")
+                    sys.exit(12)
+                section_before, orig, section_after = extracted
+                print(f"[self-yolo-agent] editing README section: {section_name}", flush=True)
+
+
+    # guard: prevent full README rewrites
+    if target == "README.md":
+        risky = any(x in task.lower() for x in ["rewrite", "full", "entire", "from scratch"])
+        if risky or len(orig) > 800:
+            print("[self-yolo-agent] blocked: full README rewrites are unreliable with this model")
+            print("[self-yolo-agent] suggestion: edit a specific section instead")
+            print('[self-yolo-agent] example: "Improve the Installation section clarity"')
+            sys.exit(11)
     say(f"target: {target}")
     say(f"file size: {len(orig)} chars")
 
-    prompt = f"""Rewrite this file based on the task.
+    if target == "README.md" and section_name:
+        prompt = f"""You are editing exactly one section of README.md.
 
 STRICT RULES:
-- Output must be complete and correct for the actual project.
-- Do not invent tools, commands, or technologies not present.
-- Use correct formatting for this file type.
-- No placeholders like example.com unless already present.
-- Keep it concise and production-ready.
-- Do not repeat sections.
+- Return ONLY the rewritten contents of this section.
+- Start with the exact heading line for this section.
+- Do not output any other section.
+- Do not output the whole README.
+- Do not output words like markdown or code fences.
+- Do not explain.
+- Keep valid markdown.
 
 Task: {task}
 
-Return ONLY the full final file contents.
-No markdown fences.
-No explanation.
+Section name: {section_name}
 
-FILE PATH: {target}
-
-FILE:
+Current section contents begin below:
+-----BEGIN SECTION-----
 {orig}
+-----END SECTION-----
+
+Return ONLY this section.
+"""
+    else:
+        prompt = f"""You are editing a real project file.
+
+STRICT RULES:
+- Return the FULL final contents of the file only.
+- Do not describe the file.
+- Do not explain your changes.
+- Do not output placeholders like obj['final_file_contents'].
+- Do not use markdown fences.
+- Do not repeat sections.
+- Keep the file valid for its file type.
+- Preserve the existing purpose unless the task explicitly changes it.
+
+Task: {task}
+
+Target file path: {target}
+
+Current file contents begin below:
+-----BEGIN FILE-----
+{orig}
+-----END FILE-----
+
+Now return ONLY the complete final file contents.
 """
     say(f"prompt size: {len(prompt)} chars")
 
@@ -157,6 +267,14 @@ FILE:
         out = clean_text(data.get("content", ""))
         if target.endswith(".md"):
             out = dedupe_markdown_sections(out)
+        if target == "README.md" and section_name:
+            pieces = []
+            if section_before:
+                pieces.append(section_before.rstrip())
+            pieces.append(out.strip())
+            if section_after:
+                pieces.append(section_after.lstrip())
+            out = "\n\n".join([x for x in pieces if x]).strip() + "\n"
         print(out, end="", flush=True)
         say(f"completed in {time.time() - started:.1f}s")
     else:
@@ -234,6 +352,16 @@ FILE:
         print("No meaningful changes.")
         tmp.unlink(missing_ok=True)
         sys.exit(0)
+
+    if preview:
+        rule("DIFF PREVIEW")
+        subprocess.run(["git", "--no-pager", "diff", "--no-index", "--", str(path), str(tmp)], check=False)
+        ans = input("\n[self-yolo-agent] apply these changes? [y/N] ").strip().lower()
+        if ans not in ("y", "yes"):
+            print("[self-yolo-agent] cancelled")
+            tmp.unlink(missing_ok=True)
+            sys.exit(0)
+
 
     subprocess.run(["git","add","."], cwd=REPO)
     subprocess.run(["git","commit","-m","checkpoint before self-yolo-agent"], cwd=REPO, capture_output=True, text=True)
