@@ -1,22 +1,39 @@
 #!/data/data/com.termux/files/usr/bin/bash
 FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+
 line="$(awk -F, 'NR>1 && $4=="new" {print; exit}' "$FILE")"
+
 if [ -z "$line" ]; then
   echo "No new leads."
+  echo
+  echo "Run:"
+  echo "printf 'name,link,contact,status,date\n' > ~/3dvr-agent/thomas-agent/leads.csv && ask-crawl && ask-enrich && ask-next"
   exit 0
 fi
+
 name="$(printf '%s' "$line" | awk -F, '{print $1}')"
 link="$(printf '%s' "$line" | awk -F, '{print $2}')"
 contact="$(printf '%s' "$line" | awk -F, '{print $3}')"
+
+target="$contact"
+[ -z "$target" ] && target="$link"
+
+echo "NEXT LEAD"
 echo "Name: $name"
 echo "Site: $link"
 echo "Contact: $contact"
 echo
-echo 'Message:'
-echo 'Hey, I checked your site and saw a few quick wins—I fix websites for $20/month. Want me to take a look?'
+echo "STEP 1: Open this page"
+echo "termux-open-url \"$target\""
 echo
-echo "Open site:"
-echo "termux-open-url \"${contact:-$link}\""
+echo "STEP 2: Send this message (customize 1 word if possible)"
+echo 'Hey—I took a quick look at your site and had a couple small ideas that could make it clearer/easier to use. Want me to share?'
 echo
-echo "After sending:"
+echo "STEP 3: After sending, run this"
 echo "ask-track contact \"$name\""
+echo
+echo "STEP 4: Then get the next lead"
+echo "ask-next"
+echo
+echo "Opening page now..."
+termux-open-url "$target"
