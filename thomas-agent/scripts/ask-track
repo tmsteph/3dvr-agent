@@ -1,15 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
 mkdir -p "$(dirname "$FILE")"
-[ ! -f "$FILE" ] && echo "name,link,status,date" > "$FILE"
-
+[ ! -f "$FILE" ] && echo "name,link,contact,status,date" > "$FILE"
 case "$1" in
-  add) echo "$2,$3,new,$(date +%F)" >> "$FILE" && echo "Added: $2" ;;
-  contact) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$3="contacted"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Contacted: $2" ;;
-  reply) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$3="replied"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Replied: $2" ;;
-  close) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$3="closed"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Closed: $2" ;;
-  new) awk -F, 'NR==1{next} $3=="new"{print "[ ]",$1,"->",$2}' "$FILE" ;;
-  followup) awk -F, 'NR==1{next} $3=="contacted"{print "[x]",$1,"->",$2}' "$FILE" ;;
-  view) awk -F, 'BEGIN{OFS=","} NR==1{print;next} {mark=($3=="new"?"[ ]":$3=="contacted"?"[x]":$3=="replied"?"[💬]":$3=="closed"?"[💰]":"[?]"); print mark,$1,$2,$3,$4}' "$FILE" ;;
+  add) echo "$2,$3,,$(printf '%s' new),$(date +%F)" >> "$FILE" && echo "Added: $2" ;;
+  contact) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$4="contacted"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Contacted: $2" ;;
+  reply) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$4="replied"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Replied: $2" ;;
+  close) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$4="closed"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Closed: $2" ;;
+  new) awk -F, 'NR==1{next} $4=="new"{print "[ ]",$1,"->",($3!=""?$3:$2)}' "$FILE" ;;
+  followup) awk -F, 'NR==1{next} $4=="contacted"{print "[x]",$1,"->",($3!=""?$3:$2)}' "$FILE" ;;
+  view) awk -F, 'BEGIN{OFS=","} NR==1{print;next} {mark=($4=="new"?"[ ]":$4=="contacted"?"[x]":$4=="replied"?"[💬]":$4=="closed"?"[💰]":"[?]"); print mark,$1,$2,$3,$4,$5}' "$FILE" ;;
   *) echo 'ask-track add "Name" "Link" | ask-track contact "Name" | ask-track reply "Name" | ask-track close "Name" | ask-track new | ask-track followup | ask-track view' ;;
 esac

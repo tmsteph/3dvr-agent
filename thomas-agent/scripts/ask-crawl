@@ -2,33 +2,29 @@
 FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
 mkdir -p "$(dirname "$FILE")"
 [ ! -f "$FILE" ] && echo "name,link,status,date" > "$FILE"
-
 LOC="$(termux-location 2>/dev/null)" || { echo "Enable Location permission for Termux first."; exit 1; }
 LAT="$(printf '%s' "$LOC" | python -c 'import sys,json; print(json.load(sys.stdin)["latitude"])')"
 LON="$(printf '%s' "$LOC" | python -c 'import sys,json; print(json.load(sys.stdin)["longitude"])')"
-
-python - "$FILE" "$LAT" "$LON" <<'INNER'
-import sys, json, urllib.parse, urllib.request, datetime
-
-file = sys.argv[1]
-lat = float(sys.argv[2])
-lon = float(sys.argv[3])
+python - "$FILE" "$LAT" "$LON" <<'PY'
+import sys, json, urllib.parse, urllib.request, datetime, time
+file, lat, lon = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
 date = datetime.date.today().isoformat()
-
-q = (
-    f'[out:json][timeout:25];'
-    f'('
-    f'node["amenity"="cafe"](around:5000,{lat},{lon});'
-    f'way["amenity"="cafe"](around:5000,{lat},{lon});'
-    f'node["shop"="coffee"](around:5000,{lat},{lon});'
-    f'way["shop"="coffee"](around:5000,{lat},{lon});'
-    f');'
-    f'out center tags;'
-)
-
-url = "https://overpass-api.de/api/interpreter?data=" + urllib.parse.quote(q)
-data = json.loads(urllib.request.urlopen(url).read().decode())
-
+q = f'[out:json][timeout:25];(node["amenity"="cafe"](around:5000,{lat},{lon});way["amenity"="cafe"](around:5000,{lat},{lon});node["shop"="coffee"](around:5000,{lat},{lon});way["shop"="coffee"](around:5000,{lat},{lon}););out center tags;'
+urls = [
+    "https://overpass-api.de/api/interpreter?data=" + urllib.parse.quote(q),
+    "https://overpass.kumi.systems/api/interpreter?data=" + urllib.parse.quote(q),
+]
+data = None
+for url in urls:
+    try:
+        with urllib.request.urlopen(url, timeout=30) as r:
+            data = json.loads(r.read().decode())
+        break
+    except Exception:
+        time.sleep(1)
+if data is None:
+    print("Crawler failed: map API timed out")
+    sys.exit(1)
 seen = set()
 rows = []
 for el in data.get("elements", []):
@@ -42,12 +38,9 @@ for el in data.get("elements", []):
         continue
     seen.add(key)
     rows.append((name.replace(",", " "), website.replace(",", " "), "new", date))
-
 with open(file, "a", encoding="utf-8") as f:
     for r in rows[:20]:
         f.write(",".join(r) + "\n")
-
-print(f"Added {min(len(rows), 20)} leads")
-INNER
-
+print(f"Added {min(len(rows),20)} leads")
+PY
 awk -F, 'BEGIN{OFS=","} NR==1{print;next} !seen[$1 FS $2]++' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
