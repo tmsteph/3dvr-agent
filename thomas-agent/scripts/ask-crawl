@@ -1,0 +1,53 @@
+#!/data/data/com.termux/files/usr/bin/bash
+FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+mkdir -p "$(dirname "$FILE")"
+[ ! -f "$FILE" ] && echo "name,link,status,date" > "$FILE"
+
+LOC="$(termux-location 2>/dev/null)" || { echo "Enable Location permission for Termux first."; exit 1; }
+LAT="$(printf '%s' "$LOC" | python -c 'import sys,json; print(json.load(sys.stdin)["latitude"])')"
+LON="$(printf '%s' "$LOC" | python -c 'import sys,json; print(json.load(sys.stdin)["longitude"])')"
+
+python - "$FILE" "$LAT" "$LON" <<'INNER'
+import sys, json, urllib.parse, urllib.request, datetime
+
+file = sys.argv[1]
+lat = float(sys.argv[2])
+lon = float(sys.argv[3])
+date = datetime.date.today().isoformat()
+
+q = (
+    f'[out:json][timeout:25];'
+    f'('
+    f'node["amenity"="cafe"](around:5000,{lat},{lon});'
+    f'way["amenity"="cafe"](around:5000,{lat},{lon});'
+    f'node["shop"="coffee"](around:5000,{lat},{lon});'
+    f'way["shop"="coffee"](around:5000,{lat},{lon});'
+    f');'
+    f'out center tags;'
+)
+
+url = "https://overpass-api.de/api/interpreter?data=" + urllib.parse.quote(q)
+data = json.loads(urllib.request.urlopen(url).read().decode())
+
+seen = set()
+rows = []
+for el in data.get("elements", []):
+    tags = el.get("tags", {})
+    name = tags.get("name")
+    if not name:
+        continue
+    website = tags.get("website") or tags.get("contact:website") or ""
+    key = (name, website)
+    if key in seen:
+        continue
+    seen.add(key)
+    rows.append((name.replace(",", " "), website.replace(",", " "), "new", date))
+
+with open(file, "a", encoding="utf-8") as f:
+    for r in rows[:20]:
+        f.write(",".join(r) + "\n")
+
+print(f"Added {min(len(rows), 20)} leads")
+INNER
+
+awk -F, 'BEGIN{OFS=","} NR==1{print;next} !seen[$1 FS $2]++' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
