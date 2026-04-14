@@ -27,7 +27,7 @@ echo "STEP 1: Open this page"
 echo "termux-open-url \"$target\""
 echo
 echo "STEP 2: Send this message (customize 1 word if possible)"
-echo 'Hey—I took a quick look at your site and had a couple small ideas that could make it clearer/easier to use. Want me to share?'
+ask-message a
 echo
 echo "STEP 3: After sending, run this"
 echo "ask-track contact \"$name\""
