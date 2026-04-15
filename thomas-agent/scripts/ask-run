@@ -8,7 +8,11 @@ ask-crawl || true
 echo
 
 echo "[2/3] Enrich step..."
-ask-enrich || true
+if [ -f "$HOME/3dvr-agent/thomas-agent/leads.csv" ]; then
+  ask-enrich || true
+else
+  echo "No leads file yet, skipping enrich."
+fi
 echo
 
 echo "[3/3] Next lead..."
