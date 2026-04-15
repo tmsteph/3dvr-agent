@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 printf '%s\n' \
 'I help small businesses fix websites and tech for $20/month.' \
 'Most people just need a few things fixed to start getting results.' \

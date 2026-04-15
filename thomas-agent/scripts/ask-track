@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
 mkdir -p "$(dirname "$FILE")"
 [ ! -f "$FILE" ] && echo "name,link,contact,status,date" > "$FILE"

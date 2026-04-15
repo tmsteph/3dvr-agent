@@ -1,4 +1,4 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
 case "${1:-a}" in
   a)
     echo 'Hey—I took a quick look at your site and had a couple small ideas that could make it clearer/easier to use. Want me to share?'
