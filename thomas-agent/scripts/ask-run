@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -e
+
+echo "== 3dvr run =="
+echo
+
+echo "[1/3] Crawling leads..."
+ask-crawl || true
+echo
+
+echo "[2/3] Enriching leads..."
+ask-enrich || true
+echo
+
+echo "[3/3] Getting next lead..."
+ask-next
