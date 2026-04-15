@@ -1,15 +1,75 @@
 #!/usr/bin/env bash
-case "${1:-a}" in
-  a)
-    echo 'Hey—I took a quick look at your site and had a couple small ideas that could make it clearer/easier to use. Want me to share?'
-    ;;
-  b)
-    echo 'Hey, I was checking out your site and noticed a couple easy improvements. Want me to send them over?'
-    ;;
-  c)
-    echo 'Hey—I had a quick idea for your website that could help customers take action faster. Want me to share?'
-    ;;
+
+FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+mode="${1:-a}"
+target="$2"
+
+get_lead() {
+  [ -f "$FILE" ] || return 1
+  awk -F, -v name="$target" 'NR>1 && $1==name {print; exit}' "$FILE"
+}
+
+msg_a() {
+  echo 'Hey—I took a quick look at your site and had a couple small ideas that could make it clearer/easier to use. Want me to share?'
+}
+
+msg_b() {
+  echo 'Hey, I was checking out your site and noticed a couple easy improvements. Want me to send them over?'
+}
+
+msg_c() {
+  echo 'Hey—I had a quick idea for your website that could help customers take action faster. Want me to share?'
+}
+
+msg_lead() {
+  line="$(get_lead)"
+  if [ -n "$line" ]; then
+    name="$(printf '%s' "$line" | awk -F, '{print $1}')"
+    link="$(printf '%s' "$line" | awk -F, '{print $2}')"
+    echo "Hey—I took a quick look at ${name}'s site (${link}) and had a couple small ideas that could make it clearer/easier to use. Want me to share?"
+  else
+    msg_a
+  fi
+}
+
+msg_smart() {
+  line="$(get_lead)"
+  if [ -z "$line" ]; then
+    msg_a
+    return
+  fi
+
+  name="$(printf '%s' "$line" | awk -F, '{print $1}')"
+  link="$(printf '%s' "$line" | awk -F, '{print $2}')"
+  contact="$(printf '%s' "$line" | awk -F, '{print $3}')"
+  haystack="$(printf '%s %s %s' "$name" "$link" "$contact" | tr '[:upper:]' '[:lower:]')"
+
+  case "$haystack" in
+    *menu*|*restaurant*|*cafe*|*coffee*|*food*|*bar*|*grill*)
+      echo "Hey—I took a quick look at ${name}'s site and had a couple small ideas that could make the menu/contact flow clearer for customers. Want me to share?"
+      ;;
+    *shop*|*store*|*product*|*cart*|*checkout*)
+      echo "Hey—I took a quick look at ${name}'s site and noticed a couple simple ideas that could make it easier for people to browse and buy. Want me to share?"
+      ;;
+    *book*|*appointment*|*schedule*|*booking*)
+      echo "Hey—I took a quick look at ${name}'s site and had a couple small ideas that could make booking or contacting you easier. Want me to share?"
+      ;;
+    *law*|*legal*|*attorney*|*dental*|*clinic*|*health*|*realestate*|*mortgage*)
+      echo "Hey—I took a quick look at ${name}'s site and noticed a couple simple ways it could feel clearer and build trust faster for new visitors. Want me to share?"
+      ;;
+    *)
+      echo "Hey—I took a quick look at ${name}'s site (${link}) and had a couple small ideas that could make it clearer/easier to use. Want me to share?"
+      ;;
+  esac
+}
+
+case "$mode" in
+  a) msg_a ;;
+  b) msg_b ;;
+  c) msg_c ;;
+  lead|personal) msg_lead ;;
+  smart) msg_smart ;;
   *)
-    echo "Usage: ask-message [a|b|c]"
+    echo 'Usage: ask-message [a|b|c|lead|smart] "Business Name"'
     ;;
 esac

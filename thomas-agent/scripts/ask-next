@@ -28,7 +28,7 @@ echo "STEP 1: Open this page"
 echo "open_url \"$target\""
 echo
 echo "STEP 2: Send this message (customize 1 word if possible)"
-ask-message a
+ask-message smart "$name"
 echo
 echo "STEP 3: After sending, run this"
 echo "ask-track contact \"$name\""
