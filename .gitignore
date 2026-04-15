@@ -6,3 +6,6 @@ __pycache__/
 *.bak
 *.egg-info/
 thomas-agent/leads.csv
+.venv/
+*.csv
+__pycache__/
