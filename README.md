@@ -27,6 +27,7 @@ ask-next
 - ask-track → manage pipeline
 - ask-next → next lead + ready opener + launch-page follow-up
 - ask-message → outreach message variants and launch-page follow-up
+- ask-send → copy opener, open email/contact page, and optionally mark contacted
 - ask-sales → outreach messages
 - ask-reply → reply messages
 - ask-post → simple posts

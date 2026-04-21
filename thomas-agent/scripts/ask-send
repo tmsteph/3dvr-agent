@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
+
+FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+mode="opener"
+mark_after_send="no"
+dry_run="no"
+target_name=""
+
+usage() {
+  echo 'Usage: ask-send [--offer] [--mark] [--dry-run] ["Business Name"]'
+  echo
+  echo 'Examples:'
+  echo '  ask-send'
+  echo '  ask-send --dry-run'
+  echo '  ask-send --offer "Scrimshaw Coffee"'
+  echo '  ask-send --mark "Scrimshaw Coffee"'
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --offer) mode="offer" ;;
+    --mark) mark_after_send="yes" ;;
+    --dry-run) dry_run="yes" ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      if [ -z "$target_name" ]; then
+        target_name="$1"
+      else
+        target_name="$target_name $1"
+      fi
+      ;;
+  esac
+  shift
+done
+
+if [ ! -f "$FILE" ]; then
+  echo "No leads file found at $FILE"
+  echo "Run: ask-crawl && ask-enrich"
+  exit 1
+fi
+
+if [ -n "$target_name" ]; then
+  line="$(awk -F, -v name="$target_name" 'NR>1 && $1==name {print; exit}' "$FILE")"
+else
+  line="$(awk -F, 'NR>1 && $4=="new" && ($2!="" || $3!="") {print; exit}' "$FILE")"
+fi
+
+if [ -z "$line" ]; then
+  echo "No matching usable lead."
+  echo
+  echo "Run:"
+  echo "ask-track new"
+  exit 1
+fi
+
+name="$(printf '%s' "$line" | awk -F, '{print $1}')"
+link="$(printf '%s' "$line" | awk -F, '{print $2}')"
+contact="$(printf '%s' "$line" | awk -F, '{print $3}')"
+
+target="$contact"
+[ -z "$target" ] && target="$link"
+
+if [ "$mode" = "offer" ]; then
+  message="$(ask-message offer)"
+else
+  message="$(bash "$HOME/3dvr-agent/thomas-agent/scripts/ask-personalize" "$name" "$link" "$contact")"
+fi
+
+email=""
+case "$target" in
+  mailto:*)
+    email="${target#mailto:}"
+    email="${email%%\?*}"
+    ;;
+  *@*)
+    case "$target" in
+      http://*|https://*) email="" ;;
+      *) email="${target%%\?*}" ;;
+    esac
+    ;;
+esac
+
+subject="Quick idea for $name"
+encoded_subject="$(url_encode "$subject")"
+encoded_body="$(url_encode "$message")"
+
+echo "OUTREACH READY"
+echo "Name: $name"
+echo "Site: $link"
+echo "Contact: $contact"
+echo "Mode: $mode"
+echo
+echo "$message"
+echo
+
+if [ "$dry_run" = "yes" ]; then
+  echo "Dry run: not opening or copying."
+elif [ -n "$email" ]; then
+  mailto_url="mailto:$email?subject=$encoded_subject&body=$encoded_body"
+  copy_text "$message"
+  echo "Copied message to clipboard."
+  echo "Opening email draft:"
+  echo "$mailto_url"
+  open_url "$mailto_url"
+else
+  copy_text "$message"
+  echo "Copied message to clipboard."
+  echo "Opening contact page:"
+  echo "$target"
+  open_url "$target"
+fi
+
+if [ "$mark_after_send" = "yes" ] && [ "$dry_run" != "yes" ]; then
+  ask-track contact "$name" "$mode"
+fi
