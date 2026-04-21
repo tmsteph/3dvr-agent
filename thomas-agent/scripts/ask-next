@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
 FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+LAUNCH_URL="https://3dvr.tech/launch-in-3-days.html"
 
-line="$(awk -F, 'NR>1 && $4=="new" {print; exit}' "$FILE")"
+line="$(awk -F, 'NR>1 && $4=="new" && ($2!="" || $3!="") {print; exit}' "$FILE")"
 
 if [ -z "$line" ]; then
-  echo "No new leads."
+  echo "No usable new leads."
   echo
   echo "Run:"
-  echo "printf 'name,link,contact,status,date\n' > ~/3dvr-agent/thomas-agent/leads.csv && ask-crawl && ask-enrich && ask-next"
+  echo "ask-crawl && ask-enrich && ask-track new"
   exit 0
 fi
 
@@ -27,13 +28,18 @@ echo
 echo "STEP 1: Open this page"
 echo "open_url \"$target\""
 echo
-echo "STEP 2: Send this message (customize 1 word if possible)"
-ask-message smart "$name"
+echo "STEP 2: Send this opener"
+ask-personalize "$name" "$link" "$contact"
 echo
-echo "STEP 3: After sending, run this"
+echo "STEP 3: If they want context, send this"
+ask-message offer
+echo
+echo "Landing page: $LAUNCH_URL"
+echo
+echo "STEP 4: After sending, run this"
 echo "ask-track contact \"$name\""
 echo
-echo "STEP 4: Then get the next lead"
+echo "STEP 5: Then get the next lead"
 echo "ask-next"
 echo
 echo "Opening page now..."
