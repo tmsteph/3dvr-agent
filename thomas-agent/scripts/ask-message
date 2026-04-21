@@ -1,15 +1,20 @@
 #!/data/data/com.termux/files/usr/bin/bash
+LAUNCH_URL="https://3dvr.tech/launch-in-3-days.html"
+
 case "${1:-a}" in
   a)
-    echo 'Hey—I took a quick look at your site and had a couple small ideas that could make it clearer/easier to use. Want me to share?'
+    echo 'Hey—I took a quick look at your site and saw a couple ways it could be clearer and easier for customers to act on. Want me to share?'
     ;;
   b)
-    echo 'Hey, I was checking out your site and noticed a couple easy improvements. Want me to send them over?'
+    echo 'Hey, I was checking out your site and noticed a couple easy ways it could feel clearer and bring in more customers. Want me to send them over?'
     ;;
   c)
     echo 'Hey—I had a quick idea for your website that could help customers take action faster. Want me to share?'
     ;;
+  offer)
+    echo "I help people go from idea to live page in 3 days. If you want context, this is the page: $LAUNCH_URL"
+    ;;
   *)
-    echo "Usage: ask-message [a|b|c]"
+    echo "Usage: ask-message [a|b|c|offer]"
     ;;
 esac

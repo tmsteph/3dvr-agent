@@ -1,0 +1,15 @@
+#!/data/data/com.termux/files/usr/bin/bash
+name="$1"
+site="$2"
+contact="$3"
+
+hint="site"
+
+case "$site $contact" in
+  *menu*|*Menu*) hint="menu or contact flow" ;;
+  *book*|*reserv*|*order*) hint="booking or ordering flow" ;;
+  *contact*|*about*) hint="contact flow" ;;
+  *event*|*cater*) hint="events or catering flow" ;;
+esac
+
+echo "Hey—I took a quick look at $name's site and saw a couple ways the $hint could be clearer and easier for customers to act on. Want me to share?"
