@@ -24,7 +24,7 @@ ask-next
 
 - ask-crawl → find nearby businesses
 - ask-enrich → find contact pages
-- ask-track → manage pipeline
+- ask-track → manage pipeline, including `new`, `contact`, `nurture`, `reply`, `close`
 - ask-next → next lead + ready opener + launch-page follow-up
 - ask-message → outreach message variants and launch-page follow-up
 - ask-send → copy opener, open email/contact page, and optionally mark contacted
