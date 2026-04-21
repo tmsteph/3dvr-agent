@@ -1,0 +1,23 @@
+{
+  "name": "3dvr-agent",
+  "version": "1.0.0",
+  "description": "A local command-line system for: - building apps with AI - finding and closing real-world customers",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tmsteph/3dvr-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/tmsteph/3dvr-agent/issues"
+  },
+  "homepage": "https://github.com/tmsteph/3dvr-agent#readme",
+  "dependencies": {
+    "gun": "^0.2020.1241"
+  }
+}

@@ -1,4 +1,5 @@
-#!/data/data/com.termux/files/usr/bin/bash
+#!/usr/bin/env bash
+source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
 FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
 LAUNCH_URL="https://3dvr.tech/launch-in-3-days.html"
 
@@ -25,10 +26,10 @@ echo "Site: $link"
 echo "Contact: $contact"
 echo
 echo "STEP 1: Open this page"
-echo "termux-open-url \"$target\""
+echo "open_url \"$target\""
 echo
 echo "STEP 2: Send this opener"
-ask-personalize "$name" "$link" "$contact"
+bash "$HOME/3dvr-agent/thomas-agent/scripts/ask-personalize" "$name" "$link" "$contact"
 echo
 echo "STEP 3: If they want context, send this"
 ask-message offer
@@ -42,4 +43,4 @@ echo "STEP 5: Then get the next lead"
 echo "ask-next"
 echo
 echo "Opening page now..."
-termux-open-url "$target"
+open_url "$target"

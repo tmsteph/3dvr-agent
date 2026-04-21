@@ -1,46 +1,19 @@
-#!/data/data/com.termux/files/usr/bin/bash
-FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
-mkdir -p "$(dirname "$FILE")"
-[ ! -f "$FILE" ] && echo "name,link,status,date" > "$FILE"
-LOC="$(termux-location 2>/dev/null)" || { echo "Enable Location permission for Termux first."; exit 1; }
-LAT="$(printf '%s' "$LOC" | python -c 'import sys,json; print(json.load(sys.stdin)["latitude"])')"
-LON="$(printf '%s' "$LOC" | python -c 'import sys,json; print(json.load(sys.stdin)["longitude"])')"
-python - "$FILE" "$LAT" "$LON" <<'PY'
-import sys, json, urllib.parse, urllib.request, datetime, time
-file, lat, lon = sys.argv[1], float(sys.argv[2]), float(sys.argv[3])
-date = datetime.date.today().isoformat()
-q = f'[out:json][timeout:25];(node["amenity"="cafe"](around:5000,{lat},{lon});way["amenity"="cafe"](around:5000,{lat},{lon});node["shop"="coffee"](around:5000,{lat},{lon});way["shop"="coffee"](around:5000,{lat},{lon}););out center tags;'
-urls = [
-    "https://overpass-api.de/api/interpreter?data=" + urllib.parse.quote(q),
-    "https://overpass.kumi.systems/api/interpreter?data=" + urllib.parse.quote(q),
-]
-data = None
-for url in urls:
-    try:
-        with urllib.request.urlopen(url, timeout=30) as r:
-            data = json.loads(r.read().decode())
-        break
-    except Exception:
-        time.sleep(1)
-if data is None:
-    print("Crawler failed: map API timed out")
-    sys.exit(1)
-seen = set()
-rows = []
-for el in data.get("elements", []):
-    tags = el.get("tags", {})
-    name = tags.get("name")
-    if not name:
-        continue
-    website = tags.get("website") or tags.get("contact:website") or ""
-    key = (name, website)
-    if key in seen:
-        continue
-    seen.add(key)
-    rows.append((name.replace(",", " "), website.replace(",", " "), "new", date))
-with open(file, "a", encoding="utf-8") as f:
-    for r in rows[:20]:
-        f.write(",".join(r) + "\n")
-print(f"Added {min(len(rows),20)} leads")
-PY
-awk -F, 'BEGIN{OFS=","} NR==1{print;next} !seen[$1 FS $2]++' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE"
+#!/usr/bin/env bash
+source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
+
+LEADS_FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+
+mkdir -p "$(dirname "$LEADS_FILE")"
+[ -f "$LEADS_FILE" ] || printf 'name,link,contact,status,date\n' > "$LEADS_FILE"
+
+platform="$(detect_platform)"
+location_json="$(get_location)"
+
+if [ -n "$location_json" ]; then
+  echo "Location support detected on $platform."
+  echo "$location_json"
+else
+  echo "No automatic location available on $platform."
+  echo "For now, add leads manually with:"
+  echo '3dvr-add "Business Name" "https://site.com" "https://site.com/contact"'
+fi

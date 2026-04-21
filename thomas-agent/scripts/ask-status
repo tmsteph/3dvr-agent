@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+
+if [ ! -f "$FILE" ]; then
+  echo "No leads file found."
+  exit 1
+fi
+
+echo "== Lead Status Summary =="
+awk -F, 'NR>1 && $4 != "" {count[$4]++} END {
+  print "new:", count["new"]+0
+  print "contacted:", count["contacted"]+0
+  print "replied:", count["replied"]+0
+  print "closed:", count["closed"]+0
+}' "$FILE"
+
+echo
+echo "== Leads =="
+column -s, -t < "$FILE"

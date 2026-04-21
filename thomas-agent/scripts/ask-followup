@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+
+if [ ! -f "$FILE" ]; then
+  echo "No leads file found."
+  exit 1
+fi
+
+echo "== Follow-up Leads =="
+awk -F, 'NR==1 {next} $4=="contacted" {print}' "$FILE" | column -s, -t
+
+if ! awk -F, 'NR>1 && $4=="contacted" {found=1} END{exit !found}' "$FILE"; then
+  echo "No contacted leads waiting for follow-up."
+fi
