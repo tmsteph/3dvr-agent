@@ -29,7 +29,7 @@ echo "STEP 1: Open this page"
 echo "open_url \"$target\""
 echo
 echo "STEP 2: Send this opener"
-ask-personalize "$name" "$link" "$contact"
+bash "$HOME/3dvr-agent/thomas-agent/scripts/ask-personalize" "$name" "$link" "$contact"
 echo
 echo "STEP 3: If they want context, send this"
 ask-message offer
