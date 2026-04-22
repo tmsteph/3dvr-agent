@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$HOME/3dvr-agent/thomas-agent"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  ask-artifact save "Lead Name" --draft draft.txt --file screenshot.png [--file mock.png]
+  ask-artifact list "Lead Name"
+
+Stores outreach drafts and screenshot attachments in Gun:
+  3dvr/crm/outreach-artifacts/<lead-slug>
+USAGE
+}
+
+cmd="${1:-}"
+
+case "$cmd" in
+  save)
+    shift
+    node "$ROOT/node/gun-save-outreach-artifact.js" "$@"
+    ;;
+  list)
+    shift
+    node "$ROOT/node/gun-save-outreach-artifact.js" --list "$@"
+    ;;
+  *)
+    usage
+    ;;
+esac

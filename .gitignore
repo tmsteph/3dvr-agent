@@ -9,3 +9,5 @@ thomas-agent/leads.csv
 .venv/
 *.csv
 __pycache__/
+node_modules/
+radata/

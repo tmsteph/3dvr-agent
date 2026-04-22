@@ -28,10 +28,34 @@ ask-next
 - ask-next → next lead + ready opener + launch-page follow-up
 - ask-message → outreach message variants and launch-page follow-up
 - ask-send → copy opener, open email/contact page, and optionally mark contacted
+- ask-artifact → store outreach drafts and screenshots in Gun for later reuse
 - ask-sales → outreach messages
 - ask-reply → reply messages
 - ask-post → simple posts
 - ask-flow → daily execution steps
+
+### Outreach Artifacts
+
+Store a draft and screenshots in Gun:
+
+```sh
+ask-artifact save "Dark Horse Coffee Roasters" \
+  --draft ~/outreach/darkhorse-coffee-roasters/darkhorse-footer-outreach-draft.txt \
+  --file ~/outreach/darkhorse-coffee-roasters/darkhorse-footer-buttons-current.png \
+  --file ~/outreach/darkhorse-coffee-roasters/darkhorse-footer-buttons-mock.png
+```
+
+Review the saved Gun record:
+
+```sh
+ask-artifact list "Dark Horse Coffee Roasters"
+```
+
+Gun path:
+
+```text
+3dvr/crm/outreach-artifacts/<lead-slug>
+```
 
 ## AI Dev Engine
 
