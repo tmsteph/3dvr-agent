@@ -10,7 +10,7 @@ export PATH="$HOME/3dvr-agent/thomas-agent/scripts:$PATH"
 
 ### Workflow
 
-ask-crawl
+ask-crawl --location "La Mesa, CA" --category professional --limit 10 --radius-km 8
 ask-enrich
 ask-track new
 ask-next
@@ -22,7 +22,7 @@ ask-next
 
 ### Commands
 
-- ask-crawl → find nearby businesses
+- ask-crawl → find nearby businesses from OpenStreetMap/Overpass, dedupe them, and add them to `thomas-agent/leads.csv`
 - ask-enrich → find contact pages
 - ask-track → manage pipeline, including `new`, `contact`, `nurture`, `reply`, `close`
 - ask-next → next lead + ready opener + launch-page follow-up
@@ -33,6 +33,37 @@ ask-next
 - ask-reply → reply messages
 - ask-post → simple posts
 - ask-flow → daily execution steps
+
+### Lead Crawling
+
+Run a dry crawl first:
+
+```sh
+ask-crawl --location "La Mesa, CA" --category professional --limit 10 --radius-km 8 --dry-run
+```
+
+Append the usable leads to the pipeline:
+
+```sh
+ask-crawl --location "La Mesa, CA" --category professional --limit 10 --radius-km 8
+```
+
+Categories:
+
+```text
+coffee, food, service, professional, health
+```
+
+Useful defaults:
+
+```sh
+export THREEDVR_LEAD_LOCATION="San Diego, CA"
+export THREEDVR_LEAD_CATEGORY="service"
+export THREEDVR_LEAD_LIMIT=25
+export THREEDVR_LEAD_RADIUS_KM=8
+```
+
+If Overpass rate-limits a broad search, wait a minute or narrow the radius/city.
 
 ### Outreach Artifacts
 

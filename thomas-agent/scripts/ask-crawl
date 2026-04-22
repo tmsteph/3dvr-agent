@@ -1,19 +1,7 @@
 #!/usr/bin/env bash
-source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
+set -euo pipefail
 
-LEADS_FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-mkdir -p "$(dirname "$LEADS_FILE")"
-[ -f "$LEADS_FILE" ] || printf 'name,link,contact,status,date\n' > "$LEADS_FILE"
-
-platform="$(detect_platform)"
-location_json="$(get_location)"
-
-if [ -n "$location_json" ]; then
-  echo "Location support detected on $platform."
-  echo "$location_json"
-else
-  echo "No automatic location available on $platform."
-  echo "For now, add leads manually with:"
-  echo '3dvr-add "Business Name" "https://site.com" "https://site.com/contact"'
-fi
+node "$ROOT/node/lead-crawl.js" "$@"
