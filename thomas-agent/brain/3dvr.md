@@ -1,6 +1,6 @@
 # 3dvr Business Context
 
-3dvr.tech helps people and small businesses launch websites, app ideas, and tech systems quickly.
+3dvr.tech helps people and small businesses launch websites, app ideas, follow-up systems, and tech workflows quickly.
 
 Primary sales page:
 
@@ -8,18 +8,20 @@ Primary sales page:
   https://3dvr.tech/launch-in-3-days.html
   use this when a lead wants context on the offer
 
-Pricing:
+Offer ladder:
 
-- $20/month:
-  entry offer
-  used for most outreach
+- Founder / Launch in 3 Days at $20/month:
+  entry offer for early leads, fuzzy ideas, first pages, and quick launch support
 
-- $50/month:
-  higher-touch support
-  upsell or serious clients
+- Builder at $50/month:
+  default close for real small businesses with leads, quotes, customers, follow-up, scheduling, or weekly operating pain
+
+- Embedded at $200/month:
+  higher-touch lane for teams with recurring coordination pain
 
 Rules:
-- Default to $20/month
 - Default outreach points interested leads to Launch in 3 Days
-- Use $50/month only for upsell or high-value clients
+- Default real operators to Builder when there is active business motion
+- Use Founder when the lead needs the first useful version live
+- Use Embedded when more than one person is involved or the workflow pain is recurring
 - Do not invent pricing

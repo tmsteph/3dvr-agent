@@ -11,19 +11,19 @@ get_lead() {
 }
 
 msg_a() {
-  echo 'Hey—I took a quick look at your site and saw a couple ways it could be clearer and easier for customers to act on. Want me to share?'
+  echo 'Hey—I took a quick look at your site and noticed one small thing in the customer flow that might be worth tightening. Want me to send a quick note?'
 }
 
 msg_b() {
-  echo 'Hey, I was checking out your site and noticed a couple easy ways it could feel clearer and bring in more customers. Want me to send them over?'
+  echo 'Hey, I was checking out your site and had one practical mobile/customer-flow note. Nothing huge, but it looked worth sharing. Want me to send it over?'
 }
 
 msg_c() {
-  echo 'Hey—I had a quick idea for your website that could help customers take action faster. Want me to share?'
+  echo 'Hey—I had a quick idea for making one part of your site easier for customers to act on. Want me to share?'
 }
 
 msg_offer() {
-  echo "I help people go from idea to live page in 3 days. If you want context, this is the page: $LAUNCH_URL"
+  echo "I help small service businesses get clearer online, follow up faster, and launch useful improvements without getting buried in tools. The quick entry point is Launch in 3 Days at \$20/month; active businesses usually fit Builder at \$50/month. Context: $LAUNCH_URL"
 }
 
 msg_lead() {
@@ -51,19 +51,19 @@ msg_smart() {
 
   case "$haystack" in
     *menu*|*restaurant*|*cafe*|*coffee*|*food*|*bar*|*grill*)
-      echo "Hey—I took a quick look at ${name}'s site and saw a couple ways the menu/contact flow could be clearer and easier for customers to act on. Want me to share?"
+      echo "Hey—I took a quick look at the ${name} site and noticed one small menu/contact-flow thing that might be worth tightening on mobile. Want me to send a quick note?"
       ;;
     *shop*|*store*|*product*|*cart*|*checkout*)
-      echo "Hey—I took a quick look at ${name}'s site and noticed a couple simple ways it could be easier for people to browse and buy. Want me to share?"
+      echo "Hey—I took a quick look at the ${name} site and noticed one small browse/buy flow thing that might be worth tightening. Want me to share?"
       ;;
     *book*|*appointment*|*schedule*|*booking*)
-      echo "Hey—I took a quick look at ${name}'s site and saw a couple ways booking or contacting you could be clearer and easier. Want me to share?"
+      echo "Hey—I took a quick look at the ${name} site and noticed one small booking/contact flow thing that could be clearer. Want me to send a quick note?"
       ;;
     *law*|*legal*|*attorney*|*dental*|*clinic*|*health*|*realestate*|*mortgage*)
-      echo "Hey—I took a quick look at ${name}'s site and noticed a couple simple ways it could feel clearer and build trust faster for new visitors. Want me to share?"
+      echo "Hey—I took a quick look at the ${name} site and noticed one small trust/contact-flow thing that might be worth tightening. Want me to share?"
       ;;
     *)
-      echo "Hey—I took a quick look at ${name}'s site (${link}) and saw a couple ways it could be clearer and easier for customers to act on. Want me to share?"
+      echo "Hey—I took a quick look at the ${name} site (${link}) and noticed one small customer-flow thing that might be worth tightening. Want me to share?"
       ;;
   esac
 }

@@ -39,10 +39,13 @@ echo
 echo "STEP 4: To open/copy/send from the CLI, run this"
 echo "ask-send \"$name\""
 echo
-echo "STEP 5: After sending manually, run this"
+echo "STEP 5: If you create a custom draft and screenshots, hand them to the portal"
+echo "ask-artifact open \"$name\" --draft path/to/draft.txt --file path/to/screenshot.png"
+echo
+echo "STEP 6: After sending manually, run this"
 echo "ask-track contact \"$name\""
 echo
-echo "STEP 6: Then get the next lead"
+echo "STEP 7: Then get the next lead"
 echo "ask-next"
 echo
 echo "Opening page now..."
