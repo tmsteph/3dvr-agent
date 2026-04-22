@@ -8,6 +8,7 @@ usage() {
 Usage:
   ask-artifact save "Lead Name" --draft draft.txt --file screenshot.png [--file mock.png]
   ask-artifact list "Lead Name"
+  ask-artifact open "Lead Name" --draft draft.txt --file screenshot.png [--file mock.png]
 
 Stores outreach drafts and screenshot attachments in Gun:
   3dvr/crm/outreach-artifacts/<lead-slug>
@@ -24,6 +25,10 @@ case "$cmd" in
   list)
     shift
     node "$ROOT/node/gun-save-outreach-artifact.js" --list "$@"
+    ;;
+  open)
+    shift
+    node "$ROOT/node/gun-open-outreach-artifact.js" "$@"
     ;;
   *)
     usage
