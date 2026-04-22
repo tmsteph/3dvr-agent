@@ -8,7 +8,7 @@ usage() {
 Usage:
   ask-artifact save "Lead Name" --draft draft.txt --file screenshot.png [--file mock.png]
   ask-artifact list "Lead Name"
-  ask-artifact open "Lead Name" --draft draft.txt --file screenshot.png [--file mock.png]
+  ask-artifact open "Lead Name" --draft draft.txt --file screenshot.png [--file mock.png] [--no-open]
 
 Stores outreach drafts and screenshot attachments in Gun:
   3dvr/crm/outreach-artifacts/<lead-slug>

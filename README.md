@@ -36,7 +36,28 @@ ask-next
 
 ### Outreach Artifacts
 
-Store a draft and screenshots in Gun:
+Create a universal browser handoff that writes the draft and screenshots into Gun, then opens the portal:
+
+```sh
+ask-artifact open "Dark Horse Coffee Roasters" \
+  --draft ~/outreach/darkhorse-coffee-roasters/darkhorse-footer-outreach-draft.txt \
+  --file ~/outreach/darkhorse-coffee-roasters/darkhorse-footer-buttons-current.png \
+  --file ~/outreach/darkhorse-coffee-roasters/darkhorse-footer-buttons-mock.png
+```
+
+The handoff file is written to the first available portable location:
+
+```text
+$THREEDVR_OUTREACH_DIR
+~/3dvr-outreach
+~/Downloads/3dvr-outreach
+~/outreach
+/sdcard/Download/3dvr-outreach
+```
+
+Use `--no-open` to create the handoff without launching a browser.
+
+Store a draft and screenshots directly from Node:
 
 ```sh
 ask-artifact save "Dark Horse Coffee Roasters" \

@@ -1,6 +1,7 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const PORTAL_URL = process.env.THREEDVR_PORTAL_OUTREACH_URL
   || 'https://portal.3dvr.tech/sales/outreach.html';
@@ -18,12 +19,19 @@ function parseArgs(argv) {
   const args = [...argv];
   const options = {
     files: [],
+    noOpen: false,
   };
 
   options.name = args.shift();
 
   while (args.length) {
     const flag = args.shift();
+
+    if (flag === '--no-open') {
+      options.noOpen = true;
+      continue;
+    }
+
     const value = args.shift();
 
     if (!value) {
@@ -206,14 +214,92 @@ function buildHandoffHtml(payload) {
 }
 
 function writeHandoffFile(payload) {
-  const downloadDir = '/sdcard/Download/3dvr-outreach';
-  const fallbackDir = path.join(os.homedir(), 'outreach', payload.id);
-  const outputDir = fs.existsSync('/sdcard/Download') ? downloadDir : fallbackDir;
+  const outputDir = resolveOutputDir();
   fs.mkdirSync(outputDir, { recursive: true });
 
   const outputPath = path.join(outputDir, `${payload.id}-handoff.html`);
   fs.writeFileSync(outputPath, buildHandoffHtml(payload));
   return outputPath;
+}
+
+function resolveOutputDir() {
+  if (process.env.THREEDVR_OUTREACH_DIR) {
+    return path.resolve(process.env.THREEDVR_OUTREACH_DIR);
+  }
+
+  const home = os.homedir();
+  const candidates = [
+    path.join(home, '3dvr-outreach'),
+    path.join(home, 'Downloads', '3dvr-outreach'),
+    path.join(home, 'outreach'),
+    '/sdcard/Download/3dvr-outreach',
+  ];
+
+  const existingParent = candidates.find((candidate) => {
+    const parent = path.dirname(candidate);
+    return parent && fs.existsSync(parent);
+  });
+
+  return existingParent || path.join(process.cwd(), '3dvr-outreach');
+}
+
+function fileUrl(filePath) {
+  const resolved = path.resolve(filePath);
+  if (process.platform === 'win32') {
+    return `file:///${resolved.replace(/\\/g, '/')}`;
+  }
+  return `file://${resolved}`;
+}
+
+function commandExists(command) {
+  const pathEntries = String(process.env.PATH || '').split(path.delimiter);
+  return pathEntries.some((entry) => fs.existsSync(path.join(entry, command)));
+}
+
+function detectOpenCommand() {
+  if (process.env.THREEDVR_OPEN_COMMAND) {
+    return {
+      command: process.env.THREEDVR_OPEN_COMMAND,
+      args: [],
+    };
+  }
+
+  if (process.platform === 'darwin') {
+    return { command: 'open', args: [] };
+  }
+
+  if (process.platform === 'win32') {
+    return { command: 'cmd', args: ['/c', 'start', ''] };
+  }
+
+  const linuxCommands = ['termux-open', 'xdg-open', 'gio'];
+  const command = linuxCommands.find(commandExists);
+
+  if (!command) {
+    return null;
+  }
+
+  if (command === 'gio') {
+    return { command, args: ['open'] };
+  }
+
+  return { command, args: [] };
+}
+
+function openHandoffFile(outputPath) {
+  const opener = detectOpenCommand();
+
+  if (!opener) {
+    return false;
+  }
+
+  const target = fileUrl(outputPath);
+  const child = spawn(opener.command, [...opener.args, target], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+  return true;
 }
 
 function main() {
@@ -243,9 +329,14 @@ function main() {
     createdAt: new Date().toISOString(),
   };
   const outputPath = writeHandoffFile(payload);
+  const opened = options.noOpen ? false : openHandoffFile(outputPath);
 
   console.log(`Created handoff: ${outputPath}`);
-  console.log(`Open this file on Android to sync into the portal: ${outputPath}`);
+  if (opened) {
+    console.log('Opened handoff in the system browser.');
+  } else {
+    console.log(`Open this file in a browser to sync into the portal: ${outputPath}`);
+  }
 }
 
 main();
