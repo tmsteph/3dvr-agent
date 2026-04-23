@@ -34,6 +34,8 @@ ask-send --enrich --mark "Lead Name"
 - ask-reply → reply messages
 - ask-post → simple posts
 - ask-flow → daily execution steps
+- ask-autopilot → run one unattended operator cycle
+- ask-autopilot-daemon → keep the operator cycling in the background
 
 ### Lead Crawling
 
@@ -87,6 +89,75 @@ ask-send --enrich "Dark Horse Coffee Roasters"
 ```
 
 If an email is found, `ask-send` opens a prefilled `mailto:` draft. If a form or contact page is found, it copies the message and opens the page in the browser. Add `--mark` when you want it to mark the lead contacted after opening.
+
+### Autonomous Operator
+
+Run one unattended cycle:
+
+```sh
+ask-autopilot
+```
+
+Dry-run without sending email:
+
+```sh
+ask-autopilot --dry-run --no-email
+```
+
+Keep it running a few times a day:
+
+```sh
+export THREEDVR_AUTOPILOT_INTERVAL_MINUTES=360
+ask-autopilot-daemon start
+ask-autopilot-daemon status
+ask-autopilot-daemon stop
+```
+
+When `tmux` is available, the daemon runs in a detached `3dvr-autopilot` session so it survives the terminal that launched it.
+
+The operator:
+
+```text
+- refills the lead queue when new leads are low
+- enriches weak contact targets
+- stores run snapshots in Gun and local state
+- emails you only when action is needed, errors happen, or spend guardrails trip
+```
+
+Useful environment variables:
+
+```sh
+export THREEDVR_AUTOPILOT_LOCATIONS="La Mesa, CA;San Diego, CA"
+export THREEDVR_AUTOPILOT_CATEGORIES="professional;service"
+export THREEDVR_AUTOPILOT_MIN_NEW_LEADS=5
+export THREEDVR_AUTOPILOT_NOTIFY_NEW_LEADS=3
+export THREEDVR_AUTOPILOT_NOTIFY_EMAIL="3dvr.tech@gmail.com"
+export THREEDVR_AUTOPILOT_EMAIL_MODE="action"
+export GMAIL_USER="3dvr.tech@gmail.com"
+export GMAIL_APP_PASSWORD="your_app_password"
+```
+
+Optional spend guard:
+
+```sh
+export OPENAI_ADMIN_KEY="org_admin_key"
+export THREEDVR_AUTOPILOT_OPENAI_COST_LIMIT_USD=5
+```
+
+Optional Codex probe modes:
+
+```sh
+export THREEDVR_AUTOPILOT_CODEX_PROBE="auth"   # default, reads local Codex auth summary
+export THREEDVR_AUTOPILOT_CODEX_PROBE="codex"  # runs `codex exec \"/status\"`
+export THREEDVR_AUTOPILOT_CODEX_PROBE="off"
+```
+
+Gun paths:
+
+```text
+3dvr/ops/autopilot/runs/<run-id>
+3dvr/ops/autopilot/state
+```
 
 ### Outreach Artifacts
 

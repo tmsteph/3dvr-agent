@@ -5,6 +5,8 @@ const APP_ROOT = process.env.THREEDVR_GUN_ROOT || '3dvr';
 const CRM_ROOT = process.env.THREEDVR_GUN_CRM || 'crm';
 const LEADS_ROOT = process.env.THREEDVR_GUN_LEADS || 'leads';
 const OUTREACH_ARTIFACTS_ROOT = process.env.THREEDVR_GUN_OUTREACH_ARTIFACTS || 'outreach-artifacts';
+const OPS_ROOT = process.env.THREEDVR_GUN_OPS || 'ops';
+const AUTOPILOT_ROOT = process.env.THREEDVR_GUN_AUTOPILOT || 'autopilot';
 
 const gun = Gun({
   peers: [RELAY],
@@ -27,6 +29,14 @@ function outreachArtifactsNode() {
   return gun.get(APP_ROOT).get(CRM_ROOT).get(OUTREACH_ARTIFACTS_ROOT);
 }
 
+function autopilotRunsNode() {
+  return gun.get(APP_ROOT).get(OPS_ROOT).get(AUTOPILOT_ROOT).get('runs');
+}
+
+function autopilotStateNode() {
+  return gun.get(APP_ROOT).get(OPS_ROOT).get(AUTOPILOT_ROOT).get('state');
+}
+
 module.exports = {
   gun,
   RELAY,
@@ -34,7 +44,11 @@ module.exports = {
   CRM_ROOT,
   LEADS_ROOT,
   OUTREACH_ARTIFACTS_ROOT,
+  OPS_ROOT,
+  AUTOPILOT_ROOT,
   leadsNode,
   outreachArtifactsNode,
+  autopilotRunsNode,
+  autopilotStateNode,
   slugify,
 };
