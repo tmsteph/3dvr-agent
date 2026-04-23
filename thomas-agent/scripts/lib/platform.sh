@@ -21,8 +21,24 @@ open_url() {
   url="$1"
   platform="$(detect_platform)"
   case "$platform" in
-    termux) termux-open-url "$url" ;;
-    linux) command -v xdg-open >/dev/null 2>&1 && xdg-open "$url" >/dev/null 2>&1 & ;;
+    termux)
+      if command -v termux-open-url >/dev/null 2>&1; then
+        termux-open-url "$url"
+      elif command -v termux-open >/dev/null 2>&1; then
+        termux-open "$url"
+      else
+        echo "Open manually: $url"
+      fi
+      ;;
+    linux)
+      if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$url" >/dev/null 2>&1 &
+      elif command -v gio >/dev/null 2>&1; then
+        gio open "$url" >/dev/null 2>&1 &
+      else
+        echo "Open manually: $url"
+      fi
+      ;;
     wsl) command -v wslview >/dev/null 2>&1 && wslview "$url" >/dev/null 2>&1 & ;;
     mac) open "$url" ;;
     windows) start "$url" ;;

@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/platform.sh"
 
-FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
+cleanup_file=""
 mode="opener"
 mark_after_send="no"
 dry_run="no"
+enrich_first="no"
 target_name=""
 
 usage() {
-  echo 'Usage: ask-send [--offer] [--mark] [--dry-run] ["Business Name"]'
+  echo 'Usage: ask-send [--offer] [--mark] [--enrich] [--dry-run] ["Business Name"]'
   echo
   echo 'Examples:'
   echo '  ask-send'
   echo '  ask-send --dry-run'
+  echo '  ask-send --enrich "Dark Horse Coffee Roasters"'
   echo '  ask-send --offer "Scrimshaw Coffee"'
   echo '  ask-send --mark "Scrimshaw Coffee"'
 }
@@ -22,6 +27,7 @@ while [ "$#" -gt 0 ]; do
     --offer) mode="offer" ;;
     --mark) mark_after_send="yes" ;;
     --dry-run) dry_run="yes" ;;
+    --enrich) enrich_first="yes" ;;
     -h|--help)
       usage
       exit 0
@@ -41,6 +47,23 @@ if [ ! -f "$FILE" ]; then
   echo "No leads file found at $FILE"
   echo "Run: ask-crawl && ask-enrich"
   exit 1
+fi
+
+if [ "$enrich_first" = "yes" ]; then
+  enrich_args=()
+  enrich_output_label="$FILE"
+  if [ "$dry_run" = "yes" ]; then
+    cleanup_file="$(mktemp)"
+    cp "$FILE" "$cleanup_file"
+    FILE="$cleanup_file"
+    enrich_output_label="temporary dry-run file"
+    trap 'if [ -n "$cleanup_file" ]; then rm -f "$cleanup_file"; fi' EXIT
+  fi
+  if [ -n "$target_name" ]; then
+    THREEDVR_LEADS_FILE="$FILE" THREEDVR_ENRICH_OUTPUT_LABEL="$enrich_output_label" "$SCRIPT_DIR/ask-enrich" --name "$target_name" --limit 1 "${enrich_args[@]}"
+  else
+    THREEDVR_LEADS_FILE="$FILE" THREEDVR_ENRICH_OUTPUT_LABEL="$enrich_output_label" "$SCRIPT_DIR/ask-enrich" --limit 1 "${enrich_args[@]}"
+  fi
 fi
 
 if [ -n "$target_name" ]; then
@@ -65,9 +88,9 @@ target="$contact"
 [ -z "$target" ] && target="$link"
 
 if [ "$mode" = "offer" ]; then
-  message="$(ask-message offer)"
+  message="$("$SCRIPT_DIR/ask-message" offer)"
 else
-  message="$(bash "$HOME/3dvr-agent/thomas-agent/scripts/ask-personalize" "$name" "$link" "$contact")"
+  message="$(bash "$SCRIPT_DIR/ask-personalize" "$name" "$link" "$contact")"
 fi
 
 email=""
@@ -115,5 +138,5 @@ else
 fi
 
 if [ "$mark_after_send" = "yes" ] && [ "$dry_run" != "yes" ]; then
-  ask-track contact "$name" "$mode"
+  "$SCRIPT_DIR/ask-track" contact "$name" "$mode"
 fi

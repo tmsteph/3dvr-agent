@@ -14,6 +14,7 @@ ask-crawl --location "La Mesa, CA" --category professional --limit 10 --radius-k
 ask-enrich
 ask-track new
 ask-next
+ask-send --enrich --mark "Lead Name"
 
 ### Main sales page
 
@@ -23,11 +24,11 @@ ask-next
 ### Commands
 
 - ask-crawl → find nearby businesses from OpenStreetMap/Overpass, dedupe them, and add them to `thomas-agent/leads.csv`
-- ask-enrich → find contact pages
+- ask-enrich → find email addresses, contact forms, and contact pages
 - ask-track → manage pipeline, including `new`, `contact`, `nurture`, `reply`, `close`
 - ask-next → next lead + ready opener + launch-page follow-up
 - ask-message → outreach message variants and launch-page follow-up
-- ask-send → copy opener, open email/contact page, and optionally mark contacted
+- ask-send → copy opener, open email/contact page, optionally enrich first, and optionally mark contacted
 - ask-artifact → store outreach drafts and screenshots in Gun for later reuse
 - ask-sales → outreach messages
 - ask-reply → reply messages
@@ -64,6 +65,28 @@ export THREEDVR_LEAD_RADIUS_KM=8
 ```
 
 If Overpass rate-limits a broad search, wait a minute or narrow the radius/city.
+
+### Contact Enrichment
+
+Pull better contact targets from a lead site:
+
+```sh
+ask-enrich --name "Dark Horse Coffee Roasters" --refresh
+```
+
+The enricher looks for:
+
+```text
+mailto links, visible email addresses, contact forms, contact/about/booking pages
+```
+
+Send with browser/email integration:
+
+```sh
+ask-send --enrich "Dark Horse Coffee Roasters"
+```
+
+If an email is found, `ask-send` opens a prefilled `mailto:` draft. If a form or contact page is found, it copies the message and opens the page in the browser. Add `--mark` when you want it to mark the lead contacted after opening.
 
 ### Outreach Artifacts
 

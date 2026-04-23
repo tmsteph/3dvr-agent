@@ -1,36 +1,7 @@
 #!/usr/bin/env bash
-FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+set -euo pipefail
 
-tmp="$FILE.tmp"
-echo "name,link,contact,status,date" > "$tmp"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-tail -n +2 "$FILE" | while IFS=, read -r name link contact status date; do
-  new_contact="$contact"
-
-  if [ -n "$link" ] && [ -z "$contact" ]; then
-    html=$(curl -L -s "$link")
-
-    path=$(echo "$html" | grep -oiE 'href="[^"]*(contact|about)[^"]*"' | head -n1 | sed 's/href="//;s/"//')
-
-    if [ -n "$path" ]; then
-      if echo "$path" | grep -q '^http'; then
-        new_contact="$path"
-      elif echo "$path" | grep -q '^/'; then
-        base="$(printf '%s\n' "$link" | sed -E 's#(https?://[^/]+).*#\1#')"
-        new_contact="$base$path"
-      else
-        base="$(printf '%s\n' "$link" | sed -E 's#/*$##')"
-        new_contact="$base/$path"
-      fi
-    fi
-
-    if [ -z "$new_contact" ]; then
-      new_contact=$(echo "$html" | grep -oiE 'mailto:[^"]+' | head -n1)
-    fi
-  fi
-
-  echo "$name,$link,$new_contact,$status,$date" >> "$tmp"
-done
-
-mv "$tmp" "$FILE"
-echo "Enriched leads with full contact links"
+node "$ROOT/node/lead-enrich.js" "$@"

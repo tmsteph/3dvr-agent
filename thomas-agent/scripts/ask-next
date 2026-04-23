@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-source "$HOME/3dvr-agent/thomas-agent/scripts/lib/platform.sh"
-FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/platform.sh"
+FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
 LAUNCH_URL="https://3dvr.tech/launch-in-3-days.html"
 
 line="$(awk -F, 'NR>1 && $4=="new" && ($2!="" || $3!="") {print; exit}' "$FILE")"
@@ -29,15 +31,16 @@ echo "STEP 1: Open this page"
 echo "open_url \"$target\""
 echo
 echo "STEP 2: Send this opener"
-bash "$HOME/3dvr-agent/thomas-agent/scripts/ask-personalize" "$name" "$link" "$contact"
+bash "$SCRIPT_DIR/ask-personalize" "$name" "$link" "$contact"
 echo
 echo "STEP 3: If they want context, send this"
-ask-message offer
+"$SCRIPT_DIR/ask-message" offer
 echo
 echo "Landing page: $LAUNCH_URL"
 echo
 echo "STEP 4: To open/copy/send from the CLI, run this"
 echo "ask-send \"$name\""
+echo "ask-send --enrich \"$name\""
 echo
 echo "STEP 5: If you create a custom draft and screenshots, hand them to the portal"
 echo "ask-artifact open \"$name\" --draft path/to/draft.txt --file path/to/screenshot.png"
