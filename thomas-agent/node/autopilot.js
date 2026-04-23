@@ -29,10 +29,19 @@ const DEFAULT_CRAWL_LIMIT = parseInteger(process.env.THREEDVR_AUTOPILOT_CRAWL_LI
 const DEFAULT_RADIUS_KM = parseInteger(process.env.THREEDVR_AUTOPILOT_RADIUS_KM, 8);
 const DEFAULT_EMAIL_MODE = String(process.env.THREEDVR_AUTOPILOT_EMAIL_MODE || 'action').trim().toLowerCase();
 const DEFAULT_EMAIL_COOLDOWN_HOURS = parseInteger(process.env.THREEDVR_AUTOPILOT_EMAIL_COOLDOWN_HOURS, 12);
+const DEFAULT_EMAIL_TRANSPORT = String(process.env.THREEDVR_AUTOPILOT_EMAIL_TRANSPORT || 'portal').trim().toLowerCase();
 const DEFAULT_NOTIFY_EMAIL = normalizeEmail(
   process.env.THREEDVR_AUTOPILOT_NOTIFY_EMAIL
   || process.env.GMAIL_USER
   || '3dvr.tech@gmail.com'
+);
+const DEFAULT_PORTAL_EMAIL_ENDPOINT = normalizeText(
+  process.env.THREEDVR_AUTOPILOT_EMAIL_ENDPOINT
+  || 'https://portal.3dvr.tech/api/calendar/reminder-email'
+);
+const DEFAULT_PORTAL_EMAIL_TOKEN = normalizeText(
+  process.env.THREEDVR_AUTOPILOT_EMAIL_TOKEN
+  || process.env.AGENT_OPERATOR_EMAIL_TOKEN
 );
 const DEFAULT_OPENAI_COST_LIMIT_USD = parseNumber(process.env.THREEDVR_AUTOPILOT_OPENAI_COST_LIMIT_USD, null);
 const DEFAULT_OPENAI_COST_WINDOW_DAYS = parseInteger(process.env.THREEDVR_AUTOPILOT_OPENAI_COST_WINDOW_DAYS, 1);
@@ -87,10 +96,13 @@ Environment:
   THREEDVR_AUTOPILOT_NOTIFY_EMAIL        escalation target
   THREEDVR_AUTOPILOT_EMAIL_MODE          action | always | never
   THREEDVR_AUTOPILOT_EMAIL_COOLDOWN_HOURS dedupe window for repeated emails
+  THREEDVR_AUTOPILOT_EMAIL_TRANSPORT     portal | auto | gmail
+  THREEDVR_AUTOPILOT_EMAIL_ENDPOINT      portal email relay endpoint
+  THREEDVR_AUTOPILOT_EMAIL_TOKEN         shared token for portal email relay
   THREEDVR_AUTOPILOT_OPENAI_COST_LIMIT_USD optional daily spend ceiling
   THREEDVR_AUTOPILOT_CODEX_PROBE         auth | codex | off
   OPENAI_ADMIN_KEY                       required for OpenAI costs checks
-  GMAIL_USER / GMAIL_APP_PASSWORD        required for direct email alerts`);
+  GMAIL_USER / GMAIL_APP_PASSWORD        optional fallback for direct email alerts`);
 }
 
 function parseArgs(argv) {
@@ -446,6 +458,90 @@ function createMailTransport() {
   });
 }
 
+async function sendViaPortalEmail(email, summary, actions) {
+  if (!DEFAULT_PORTAL_EMAIL_ENDPOINT) {
+    return { ok: false, reason: 'portal email endpoint not configured' };
+  }
+  if (!DEFAULT_PORTAL_EMAIL_TOKEN) {
+    return { ok: false, reason: 'portal email token not configured' };
+  }
+
+  const response = await fetch(DEFAULT_PORTAL_EMAIL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${DEFAULT_PORTAL_EMAIL_TOKEN}`,
+    },
+    body: JSON.stringify({
+      mode: 'operator-alert',
+      to: [DEFAULT_NOTIFY_EMAIL],
+      subject: email.subject,
+      text: email.text,
+      summary: actions[0] || `Autopilot run ${summary.runId}`,
+      actionItems: actions,
+      commands: summary.commands,
+      metadata: {
+        runId: summary.runId,
+        ranAt: summary.ranAt,
+        counts: formatCounts(summary.counts),
+        combo: summary.combo ? `${summary.combo.location} / ${summary.combo.category}` : 'none',
+        codex: summary.codex?.mode
+          ? summary.codex.ok
+            ? `${summary.codex.mode} ok`
+            : `${summary.codex.mode} issue: ${summary.codex.reason || 'unknown'}`
+          : 'off',
+        openAiSpend: summary.openAiCosts?.available
+          ? `$${summary.openAiCosts.totalUsd.toFixed(2)} / ${summary.openAiCosts.days}d`
+          : summary.openAiCosts?.reason || 'unavailable',
+      },
+    }),
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: payload?.error || `portal email request failed: ${response.status}`,
+      status: response.status,
+    };
+  }
+
+  return {
+    ok: true,
+    to: DEFAULT_NOTIFY_EMAIL,
+    subject: email.subject,
+    via: 'portal',
+    status: response.status,
+  };
+}
+
+async function sendViaLocalGmail(email) {
+  const transport = createMailTransport();
+  if (!transport) {
+    return { ok: false, reason: 'gmail transport not configured' };
+  }
+
+  await transport.sendMail({
+    from: `"3dvr-agent" <${process.env.GMAIL_USER}>`,
+    to: DEFAULT_NOTIFY_EMAIL,
+    subject: email.subject,
+    text: email.text,
+  });
+
+  return {
+    ok: true,
+    to: DEFAULT_NOTIFY_EMAIL,
+    subject: email.subject,
+    via: 'gmail',
+  };
+}
+
 function formatCounts(counts) {
   return `new=${counts.new}, contacted=${counts.contacted}, nurture=${counts.nurture}, replied=${counts.replied}, closed=${counts.closed}, unenriched=${counts.unenriched}`;
 }
@@ -558,25 +654,38 @@ async function sendEmail(summary, actions, state) {
     return { ok: false, skipped: true, reason: decision.reason };
   }
 
-  const transport = createMailTransport();
-  if (!transport) {
-    return { ok: false, skipped: true, reason: 'gmail transport not configured' };
+  const email = buildEmail(summary, actions);
+  const transportMode = ['portal', 'auto', 'gmail'].includes(DEFAULT_EMAIL_TRANSPORT)
+    ? DEFAULT_EMAIL_TRANSPORT
+    : 'portal';
+
+  let result = null;
+  if (transportMode === 'portal' || transportMode === 'auto') {
+    result = await sendViaPortalEmail(email, summary, actions);
+    if (result.ok) {
+      state.email = {
+        lastHash: decision.fingerprint,
+        lastSentAt: new Date().toISOString(),
+      };
+      return { ok: true, skipped: false, ...result };
+    }
+
+    if (transportMode === 'portal') {
+      return { ok: false, skipped: true, reason: result.reason || 'portal email failed', via: 'portal' };
+    }
   }
 
-  const email = buildEmail(summary, actions);
-  await transport.sendMail({
-    from: `"3dvr-agent" <${process.env.GMAIL_USER}>`,
-    to: DEFAULT_NOTIFY_EMAIL,
-    subject: email.subject,
-    text: email.text,
-  });
+  result = await sendViaLocalGmail(email);
+  if (!result.ok) {
+    return { ok: false, skipped: true, reason: result.reason || 'email transport not configured', via: 'gmail' };
+  }
 
   state.email = {
     lastHash: decision.fingerprint,
     lastSentAt: new Date().toISOString(),
   };
 
-  return { ok: true, skipped: false, to: DEFAULT_NOTIFY_EMAIL, subject: email.subject };
+  return { ok: true, skipped: false, ...result };
 }
 
 function serializeAck(ack) {

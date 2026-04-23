@@ -133,6 +133,15 @@ export THREEDVR_AUTOPILOT_MIN_NEW_LEADS=5
 export THREEDVR_AUTOPILOT_NOTIFY_NEW_LEADS=3
 export THREEDVR_AUTOPILOT_NOTIFY_EMAIL="3dvr.tech@gmail.com"
 export THREEDVR_AUTOPILOT_EMAIL_MODE="action"
+export THREEDVR_AUTOPILOT_EMAIL_TRANSPORT="portal"
+export THREEDVR_AUTOPILOT_EMAIL_ENDPOINT="https://portal.3dvr.tech/api/calendar/reminder-email"
+export THREEDVR_AUTOPILOT_EMAIL_TOKEN="shared_operator_token"
+```
+
+Portal relay is preferred. Local Gmail stays available as an optional fallback:
+
+```sh
+export THREEDVR_AUTOPILOT_EMAIL_TRANSPORT="auto"
 export GMAIL_USER="3dvr.tech@gmail.com"
 export GMAIL_APP_PASSWORD="your_app_password"
 ```
