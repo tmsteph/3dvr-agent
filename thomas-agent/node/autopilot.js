@@ -19,6 +19,7 @@ const SCRIPTS_DIR = path.join(ROOT, 'scripts');
 const LEADS_FILE = process.env.THREEDVR_LEADS_FILE || path.join(ROOT, 'leads.csv');
 const STATE_DIR = process.env.THREEDVR_AUTOPILOT_STATE_DIR || path.join(ROOT, 'state');
 const STATE_FILE = process.env.THREEDVR_AUTOPILOT_STATE_FILE || path.join(STATE_DIR, 'autopilot-state.json');
+const DEFAULT_TOKEN_FILE = process.env.THREEDVR_AUTOPILOT_EMAIL_TOKEN_FILE || path.join(os.homedir(), '.3dvr-agent-operator-email-token');
 const DEFAULT_LOCATIONS = splitList(process.env.THREEDVR_AUTOPILOT_LOCATIONS || process.env.THREEDVR_LEAD_LOCATION || 'La Mesa, CA;San Diego, CA');
 const DEFAULT_CATEGORIES = splitList(process.env.THREEDVR_AUTOPILOT_CATEGORIES || process.env.THREEDVR_LEAD_CATEGORY || 'professional;service');
 const DEFAULT_INTERVAL_MINUTES = parseInteger(process.env.THREEDVR_AUTOPILOT_INTERVAL_MINUTES, 360);
@@ -42,6 +43,7 @@ const DEFAULT_PORTAL_EMAIL_ENDPOINT = normalizeText(
 const DEFAULT_PORTAL_EMAIL_TOKEN = normalizeText(
   process.env.THREEDVR_AUTOPILOT_EMAIL_TOKEN
   || process.env.AGENT_OPERATOR_EMAIL_TOKEN
+  || readOptionalFile(DEFAULT_TOKEN_FILE)
 );
 const DEFAULT_OPENAI_COST_LIMIT_USD = parseNumber(process.env.THREEDVR_AUTOPILOT_OPENAI_COST_LIMIT_USD, null);
 const DEFAULT_OPENAI_COST_WINDOW_DAYS = parseInteger(process.env.THREEDVR_AUTOPILOT_OPENAI_COST_WINDOW_DAYS, 1);
@@ -76,6 +78,15 @@ function normalizeEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '';
 }
 
+function readOptionalFile(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return '';
+    return normalizeText(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return '';
+  }
+}
+
 function usage() {
   console.log(`Usage:
   ask-autopilot [--dry-run] [--no-email] [--status-probe auth|codex|off]
@@ -99,6 +110,7 @@ Environment:
   THREEDVR_AUTOPILOT_EMAIL_TRANSPORT     portal | auto | gmail
   THREEDVR_AUTOPILOT_EMAIL_ENDPOINT      portal email relay endpoint
   THREEDVR_AUTOPILOT_EMAIL_TOKEN         shared token for portal email relay
+  THREEDVR_AUTOPILOT_EMAIL_TOKEN_FILE    optional file path for shared relay token
   THREEDVR_AUTOPILOT_OPENAI_COST_LIMIT_USD optional daily spend ceiling
   THREEDVR_AUTOPILOT_CODEX_PROBE         auth | codex | off
   OPENAI_ADMIN_KEY                       required for OpenAI costs checks

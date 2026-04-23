@@ -146,6 +146,12 @@ export GMAIL_USER="3dvr.tech@gmail.com"
 export GMAIL_APP_PASSWORD="your_app_password"
 ```
 
+If you keep the shared token in a private file, `ask-autopilot` will read it automatically from:
+
+```text
+~/.3dvr-agent-operator-email-token
+```
+
 Optional spend guard:
 
 ```sh
