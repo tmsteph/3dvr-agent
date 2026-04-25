@@ -206,6 +206,18 @@ export THREEDVR_AUTOPILOT_EMAIL_ENDPOINT="https://portal.3dvr.tech/api/calendar/
 export THREEDVR_AUTOPILOT_EMAIL_TOKEN="shared_operator_token"
 ```
 
+Optional paced auto-replies for leads already marked `contacted`:
+
+```sh
+export THREEDVR_INBOX_AUTO_REPLY="true"
+export THREEDVR_INBOX_AUTO_REPLY_LIMIT=1
+export THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES=18
+export THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES=47
+export THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES=20
+```
+
+This only replies to matched `mailto:` leads already in the pipeline as `contacted`, keeps the `Thomas @ 3DVR` identity explicit, and waits through the randomized delay window before sending.
+
 If you keep the shared token in a private file, `ask-autopilot` will read it automatically from:
 
 ```text
