@@ -34,6 +34,7 @@ const DEFAULT_AUTO_REPLY_LIMIT = parseInteger(process.env.THREEDVR_INBOX_AUTO_RE
 const DEFAULT_AUTO_REPLY_MIN_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES, 18);
 const DEFAULT_AUTO_REPLY_MAX_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES, 47);
 const DEFAULT_AUTO_REPLY_MIN_GAP_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES, 20);
+const DEFAULT_AUTO_REPLY_DELAY_MODE = normalizeText(process.env.THREEDVR_INBOX_AUTO_REPLY_DELAY_MODE || 'adaptive').toLowerCase();
 const DEFAULT_REPLY_SENDER_NAME = normalizeText(process.env.THREEDVR_INBOX_AUTO_REPLY_SENDER_NAME || 'Thomas @ 3DVR');
 const DEFAULT_REPLY_SENDER_EMAIL = normalizeEmail(
   process.env.THREEDVR_INBOX_AUTO_REPLY_SENDER_EMAIL
@@ -126,6 +127,7 @@ Environment:
   THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES   lower bound before auto-reply
   THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES   upper bound before auto-reply
   THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES     minimum gap between automated replies
+  THREEDVR_INBOX_AUTO_REPLY_DELAY_MODE          adaptive | random
   THREEDVR_INBOX_AUTO_REPLY_SENDER_NAME         default Thomas @ 3DVR
   THREEDVR_INBOX_AUTO_REPLY_SENDER_EMAIL        default 3dvr.tech@gmail.com`);
 }
@@ -331,12 +333,56 @@ function loadContactedLeadMap() {
   return map;
 }
 
-function randomDelayMinutes() {
+function computeDelayBounds() {
   const minMinutes = Math.max(0, DEFAULT_AUTO_REPLY_MIN_DELAY_MINUTES);
   const maxMinutes = Math.max(minMinutes, DEFAULT_AUTO_REPLY_MAX_DELAY_MINUTES);
+  return { minMinutes, maxMinutes };
+}
+
+function randomDelayMinutes() {
+  const { minMinutes, maxMinutes } = computeDelayBounds();
   if (minMinutes === maxMinutes) return minMinutes;
   const spread = maxMinutes - minMinutes + 1;
   return minMinutes + Math.floor(Math.random() * spread);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function adaptiveDelayMinutes(message, lead) {
+  const { minMinutes, maxMinutes } = computeDelayBounds();
+  if (minMinutes === maxMinutes) return minMinutes;
+
+  const text = `${normalizeText(message.subject)} ${normalizeText(message.preview)}`.toLowerCase();
+  let score = 0.5;
+
+  if (/\?/.test(message.subject) || /\b(can you|could you|when|what|how|interested|ready|available)\b/.test(text)) {
+    score -= 0.22;
+  }
+  if (/\b(thanks|thank you|sounds good|great|awesome|perfect)\b/.test(text)) {
+    score -= 0.08;
+  }
+  if (/\b(later|next week|sometime|not urgent|no rush)\b/.test(text)) {
+    score += 0.2;
+  }
+  if (normalizeText(message.preview).length < 60) {
+    score += 0.08;
+  }
+  if (lead?.variant && /email/i.test(lead.variant)) {
+    score -= 0.05;
+  }
+
+  score = clamp(score, 0, 1);
+  const exact = minMinutes + (maxMinutes - minMinutes) * score;
+  return Math.round(exact);
+}
+
+function chooseDelayMinutes(message, lead) {
+  if (DEFAULT_AUTO_REPLY_DELAY_MODE === 'random') {
+    return randomDelayMinutes();
+  }
+  return adaptiveDelayMinutes(message, lead);
 }
 
 function upsertMessageState(state, message, lead) {
@@ -344,15 +390,39 @@ function upsertMessageState(state, message, lead) {
   if (!existing.firstSeenAt) {
     existing.firstSeenAt = new Date().toISOString();
   }
-  if (!existing.dueAt && DEFAULT_AUTO_REPLY) {
-    const dueAt = new Date(Date.now() + randomDelayMinutes() * 60 * 1000);
+  if (!existing.dueAt && DEFAULT_AUTO_REPLY && lead) {
+    const delayMinutes = chooseDelayMinutes(message, lead);
+    const dueAt = new Date(Date.now() + delayMinutes * 60 * 1000);
     existing.dueAt = dueAt.toISOString();
+    existing.delayMinutes = delayMinutes;
   }
   existing.subject = message.subject;
   existing.fromEmail = message.fromEmail;
   existing.leadName = lead?.name || existing.leadName || '';
   state.messages[message.messageId] = existing;
   return existing;
+}
+
+function backfillPendingAutoReplies(state, leadMap) {
+  if (!DEFAULT_AUTO_REPLY) return;
+
+  for (const meta of Object.values(state.messages || {})) {
+    if (!meta || meta.autoRepliedAt || meta.dueAt) continue;
+    const fromEmail = normalizeEmail(meta.fromEmail);
+    if (!fromEmail) continue;
+    const lead = leadMap.get(fromEmail);
+    if (!lead) continue;
+
+    const syntheticMessage = {
+      subject: meta.subject || '',
+      preview: '',
+      fromEmail,
+    };
+    const delayMinutes = chooseDelayMinutes(syntheticMessage, lead);
+    meta.dueAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+    meta.delayMinutes = delayMinutes;
+    meta.leadName = lead.name || meta.leadName || '';
+  }
 }
 
 function buildAlert(messages) {
@@ -574,6 +644,7 @@ async function main() {
     const lead = contactedLeadMap.get(message.replyToEmail) || contactedLeadMap.get(message.fromEmail);
     upsertMessageState(state, message, lead);
   });
+  backfillPendingAutoReplies(state, contactedLeadMap);
 
   if (!unread.length) {
     console.log('No unread inbox messages.');
