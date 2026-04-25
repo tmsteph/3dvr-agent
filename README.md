@@ -37,6 +37,8 @@ ask-send --enrich --mark "Lead Name"
 - ask-flow → daily execution steps
 - ask-autopilot → run one unattended operator cycle
 - ask-autopilot-daemon → keep the operator cycling in the background
+- ask-inbox → poll the 3DVR inbox for unread replies and alert the operator
+- ask-inbox-daemon → keep inbox monitoring running in the background
 
 ### Lead Crawling
 
@@ -170,6 +172,38 @@ Portal relay is preferred. Local Gmail stays available as an optional fallback:
 export THREEDVR_AUTOPILOT_EMAIL_TRANSPORT="auto"
 export GMAIL_USER="3dvr.tech@gmail.com"
 export GMAIL_APP_PASSWORD="your_app_password"
+```
+
+### Inbox Monitoring
+
+Poll the 3DVR inbox once:
+
+```sh
+ask-inbox
+```
+
+Preview the operator alert without sending it:
+
+```sh
+ask-inbox --dry-run
+```
+
+Keep inbox monitoring running every 5 minutes:
+
+```sh
+export THREEDVR_INBOX_INTERVAL_MINUTES=5
+ask-inbox-daemon start
+ask-inbox-daemon status
+ask-inbox-daemon logs
+```
+
+The inbox watcher uses Gmail IMAP and the same portal relay token used by autopilot:
+
+```sh
+export GMAIL_USER="3dvr.tech@gmail.com"
+export GMAIL_APP_PASSWORD="your_app_password"
+export THREEDVR_AUTOPILOT_EMAIL_ENDPOINT="https://portal.3dvr.tech/api/calendar/reminder-email"
+export THREEDVR_AUTOPILOT_EMAIL_TOKEN="shared_operator_token"
 ```
 
 If you keep the shared token in a private file, `ask-autopilot` will read it automatically from:
