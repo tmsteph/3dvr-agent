@@ -1,0 +1,718 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { ImapFlow } = require('imapflow');
+
+const ROOT = path.join(__dirname, '..');
+const STATE_DIR = process.env.THREEDVR_AUTOPILOT_STATE_DIR || path.join(ROOT, 'state');
+const STATE_FILE = process.env.THREEDVR_INBOX_STATE_FILE || path.join(STATE_DIR, 'inbox-monitor-state.json');
+const LEADS_FILE = process.env.THREEDVR_LEADS_FILE || path.join(ROOT, 'leads.csv');
+const DEFAULT_TOKEN_FILE = process.env.THREEDVR_AUTOPILOT_EMAIL_TOKEN_FILE || path.join(os.homedir(), '.3dvr-agent-operator-email-token');
+const DEFAULT_NOTIFY_EMAIL = normalizeEmail(
+  process.env.THREEDVR_AUTOPILOT_NOTIFY_EMAIL
+  || process.env.GMAIL_USER
+  || '3dvr.tech@gmail.com'
+);
+const DEFAULT_PORTAL_EMAIL_ENDPOINT = normalizeText(
+  process.env.THREEDVR_AUTOPILOT_EMAIL_ENDPOINT
+  || process.env.THREEDVR_OUTREACH_EMAIL_ENDPOINT
+  || 'https://portal.3dvr.tech/api/calendar/reminder-email'
+);
+const DEFAULT_PORTAL_EMAIL_TOKEN = normalizeText(
+  process.env.THREEDVR_AUTOPILOT_EMAIL_TOKEN
+  || process.env.THREEDVR_OUTREACH_EMAIL_TOKEN
+  || process.env.AGENT_OPERATOR_EMAIL_TOKEN
+  || readOptionalFile(DEFAULT_TOKEN_FILE)
+);
+const DEFAULT_IMAP_HOST = normalizeText(process.env.THREEDVR_INBOX_IMAP_HOST || 'imap.gmail.com');
+const DEFAULT_IMAP_PORT = parseInteger(process.env.THREEDVR_INBOX_IMAP_PORT, 993);
+const DEFAULT_IMAP_TLS = !/^(0|false|no|off)$/i.test(String(process.env.THREEDVR_INBOX_IMAP_TLS || 'true').trim());
+const DEFAULT_MAILBOX = normalizeText(process.env.THREEDVR_INBOX_MAILBOX || 'INBOX');
+const DEFAULT_POLL_LIMIT = parseInteger(process.env.THREEDVR_INBOX_LIMIT, 10);
+const DEFAULT_AUTO_REPLY = /^(1|true|yes|on)$/i.test(String(process.env.THREEDVR_INBOX_AUTO_REPLY || '').trim());
+const DEFAULT_AUTO_REPLY_LIMIT = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_LIMIT, 1);
+const DEFAULT_AUTO_REPLY_MIN_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES, 18);
+const DEFAULT_AUTO_REPLY_MAX_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES, 47);
+const DEFAULT_AUTO_REPLY_MIN_GAP_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES, 20);
+const DEFAULT_AUTO_REPLY_DELAY_MODE = normalizeText(process.env.THREEDVR_INBOX_AUTO_REPLY_DELAY_MODE || 'adaptive').toLowerCase();
+const DEFAULT_REPLY_SENDER_NAME = normalizeText(process.env.THREEDVR_INBOX_AUTO_REPLY_SENDER_NAME || 'Thomas @ 3DVR');
+const DEFAULT_REPLY_SENDER_EMAIL = normalizeEmail(
+  process.env.THREEDVR_INBOX_AUTO_REPLY_SENDER_EMAIL
+  || process.env.GMAIL_USER
+  || '3dvr.tech@gmail.com'
+);
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function normalizeEmail(value) {
+  const email = normalizeText(value).toLowerCase();
+  if (!email) return '';
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : '';
+}
+
+function parseInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function readOptionalFile(filePath) {
+  try {
+    if (!filePath || !fs.existsSync(filePath)) return '';
+    return normalizeText(fs.readFileSync(filePath, 'utf8'));
+  } catch {
+    return '';
+  }
+}
+
+function ensureStateDir() {
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+}
+
+function loadState() {
+  ensureStateDir();
+  if (!fs.existsSync(STATE_FILE)) {
+    return {
+      version: 2,
+      seen: {},
+      messages: {},
+      lastAlertAt: '',
+      lastAutoReplyAt: '',
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8'));
+    return {
+      version: 2,
+      seen: parsed && typeof parsed.seen === 'object' ? parsed.seen : {},
+      messages: parsed && typeof parsed.messages === 'object' ? parsed.messages : {},
+      lastAlertAt: normalizeText(parsed?.lastAlertAt),
+      lastAutoReplyAt: normalizeText(parsed?.lastAutoReplyAt),
+    };
+  } catch {
+    return {
+      version: 2,
+      seen: {},
+      messages: {},
+      lastAlertAt: '',
+      lastAutoReplyAt: '',
+    };
+  }
+}
+
+function saveState(state) {
+  ensureStateDir();
+  fs.writeFileSync(STATE_FILE, `${JSON.stringify(state, null, 2)}\n`);
+}
+
+function usage() {
+  console.log(`Usage:
+  ask-inbox [--dry-run] [--limit 10]
+
+Environment:
+  GMAIL_USER / GMAIL_APP_PASSWORD               required for Gmail IMAP access
+  THREEDVR_INBOX_IMAP_HOST                      default imap.gmail.com
+  THREEDVR_INBOX_IMAP_PORT                      default 993
+  THREEDVR_INBOX_IMAP_TLS                       default true
+  THREEDVR_INBOX_MAILBOX                        default INBOX
+  THREEDVR_INBOX_LIMIT                          default 10
+  THREEDVR_AUTOPILOT_NOTIFY_EMAIL               operator alert recipient
+  THREEDVR_AUTOPILOT_EMAIL_ENDPOINT             portal email relay endpoint
+  THREEDVR_AUTOPILOT_EMAIL_TOKEN                portal email relay token
+  THREEDVR_AUTOPILOT_EMAIL_TOKEN_FILE           optional token file path
+  THREEDVR_INBOX_AUTO_REPLY                     true to auto-reply to matched contacted leads
+  THREEDVR_INBOX_AUTO_REPLY_LIMIT               max automated replies per run
+  THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES   lower bound before auto-reply
+  THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES   upper bound before auto-reply
+  THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES     minimum gap between automated replies
+  THREEDVR_INBOX_AUTO_REPLY_DELAY_MODE          adaptive | random
+  THREEDVR_INBOX_AUTO_REPLY_SENDER_NAME         default Thomas @ 3DVR
+  THREEDVR_INBOX_AUTO_REPLY_SENDER_EMAIL        default 3dvr.tech@gmail.com`);
+}
+
+function parseArgs(argv) {
+  const options = {
+    dryRun: false,
+    limit: DEFAULT_POLL_LIMIT,
+    help: false,
+  };
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === '--dry-run') {
+      options.dryRun = true;
+    } else if (arg === '--limit') {
+      options.limit = parseInteger(argv[++index], DEFAULT_POLL_LIMIT);
+    } else if (arg === '-h' || arg === '--help') {
+      options.help = true;
+    } else {
+      throw new Error(`Unknown option: ${arg}`);
+    }
+  }
+
+  options.limit = Math.max(1, options.limit || DEFAULT_POLL_LIMIT);
+  return options;
+}
+
+function formatAddress(address) {
+  if (!address) return '';
+  const name = normalizeText(address.name);
+  const email = normalizeEmail(address.address);
+  if (name && email) return `${name} <${email}>`;
+  return email || name;
+}
+
+function formatSubject(subject) {
+  const value = normalizeText(subject);
+  return value || '(no subject)';
+}
+
+function parseAddressEmail(value) {
+  const normalized = normalizeText(value);
+  const match = normalized.match(/<([^>]+)>$/);
+  return normalizeEmail(match ? match[1] : normalized);
+}
+
+function parseSourceHeaders(source) {
+  const headerBlock = String(source || '').split(/\r?\n\r?\n/, 1)[0] || '';
+  const headers = {};
+  let currentName = '';
+
+  for (const line of headerBlock.split(/\r?\n/)) {
+    if (!line) continue;
+    if (/^\s/.test(line) && currentName) {
+      headers[currentName] = `${headers[currentName]} ${normalizeText(line)}`.trim();
+      continue;
+    }
+
+    const separator = line.indexOf(':');
+    if (separator === -1) continue;
+    currentName = line.slice(0, separator).trim().toLowerCase();
+    headers[currentName] = line.slice(separator + 1).trim();
+  }
+
+  return headers;
+}
+
+function snippet(text) {
+  const value = normalizeText(String(text || ''));
+  if (!value) return '';
+  if (
+    /content-transfer-encoding:/i.test(value)
+    || /content-type:/i.test(value)
+    || /--[a-z0-9]{8,}/i.test(value)
+  ) {
+    return '';
+  }
+  return value.replace(/\s+/g, ' ').slice(0, 220);
+}
+
+function summarizeMessage(message) {
+  const envelope = message.envelope || {};
+  const from = Array.isArray(envelope.from) && envelope.from.length ? formatAddress(envelope.from[0]) : 'unknown sender';
+  const replyTo = Array.isArray(envelope.replyTo) && envelope.replyTo.length ? formatAddress(envelope.replyTo[0]) : '';
+  const subject = formatSubject(envelope.subject);
+  const date = envelope.date instanceof Date && !Number.isNaN(envelope.date.getTime())
+    ? envelope.date.toISOString()
+    : '';
+  const sourceHeaders = parseSourceHeaders(message.sourceText || '');
+  const replyMessageId = normalizeText(sourceHeaders['message-id'] || envelope.messageId || `uid-${message.uid}`);
+  const references = normalizeText(sourceHeaders.references);
+  const preview = snippet(message.bodyText || '');
+
+  return {
+    uid: message.uid,
+    messageId: replyMessageId,
+    from,
+    fromEmail: parseAddressEmail(from),
+    replyTo,
+    replyToEmail: parseAddressEmail(replyTo),
+    subject,
+    date,
+    preview,
+    inReplyTo: normalizeText(sourceHeaders['in-reply-to']),
+    references,
+  };
+}
+
+async function loadUnreadMessages(limit) {
+  const user = normalizeEmail(process.env.GMAIL_USER);
+  const pass = normalizeText(process.env.GMAIL_APP_PASSWORD);
+  if (!(user && pass)) {
+    throw new Error('GMAIL_USER and GMAIL_APP_PASSWORD are required for inbox monitoring.');
+  }
+
+  const client = new ImapFlow({
+    host: DEFAULT_IMAP_HOST,
+    port: DEFAULT_IMAP_PORT,
+    secure: DEFAULT_IMAP_TLS,
+    auth: {
+      user,
+      pass,
+    },
+    logger: false,
+  });
+
+  const rows = [];
+
+  try {
+    await client.connect();
+    await client.mailboxOpen(DEFAULT_MAILBOX);
+
+    const sequence = await client.search({ seen: false });
+    const unreadUids = sequence.slice(-limit).reverse();
+    if (!unreadUids.length) {
+      return [];
+    }
+
+    for await (const message of client.fetch(unreadUids, {
+      uid: true,
+      envelope: true,
+      source: true,
+    })) {
+      let sourceText = '';
+      let bodyText = '';
+      try {
+        sourceText = message.source ? message.source.toString('utf8') : '';
+        bodyText = sourceText.split(/\r?\n\r?\n/, 2)[1] || '';
+      } catch {
+        sourceText = '';
+        bodyText = '';
+      }
+
+      rows.push({
+        uid: message.uid,
+        envelope: message.envelope,
+        sourceText,
+        bodyText,
+      });
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+
+  return rows
+    .map(summarizeMessage)
+    .filter((row) => row.fromEmail && row.fromEmail !== normalizeEmail(process.env.GMAIL_USER));
+}
+
+function parseCsvRow(line) {
+  const [name = '', link = '', contact = '', status = '', date = '', variant = ''] = String(line || '').split(',');
+  return { name, link, contact, status, date, variant };
+}
+
+function readLeads(filePath) {
+  if (!fs.existsSync(filePath)) return [];
+  return fs.readFileSync(filePath, 'utf8')
+    .split(/\r?\n/)
+    .slice(1)
+    .filter(Boolean)
+    .map(parseCsvRow);
+}
+
+function extractLeadEmail(row) {
+  const contact = normalizeText(row?.contact);
+  if (!contact) return '';
+  if (/^mailto:/i.test(contact)) {
+    return normalizeEmail(contact.replace(/^mailto:/i, '').split('?')[0]);
+  }
+  return normalizeEmail(contact);
+}
+
+function loadContactedLeadMap() {
+  const rows = readLeads(LEADS_FILE);
+  const map = new Map();
+  rows.forEach((row) => {
+    if (normalizeText(row.status).toLowerCase() !== 'contacted') return;
+    const email = extractLeadEmail(row);
+    if (!email) return;
+    map.set(email, row);
+  });
+  return map;
+}
+
+function computeDelayBounds() {
+  const minMinutes = Math.max(0, DEFAULT_AUTO_REPLY_MIN_DELAY_MINUTES);
+  const maxMinutes = Math.max(minMinutes, DEFAULT_AUTO_REPLY_MAX_DELAY_MINUTES);
+  return { minMinutes, maxMinutes };
+}
+
+function randomDelayMinutes() {
+  const { minMinutes, maxMinutes } = computeDelayBounds();
+  if (minMinutes === maxMinutes) return minMinutes;
+  const spread = maxMinutes - minMinutes + 1;
+  return minMinutes + Math.floor(Math.random() * spread);
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function adaptiveDelayMinutes(message, lead) {
+  const { minMinutes, maxMinutes } = computeDelayBounds();
+  if (minMinutes === maxMinutes) return minMinutes;
+
+  const text = `${normalizeText(message.subject)} ${normalizeText(message.preview)}`.toLowerCase();
+  let score = 0.5;
+
+  if (/\?/.test(message.subject) || /\b(can you|could you|when|what|how|interested|ready|available)\b/.test(text)) {
+    score -= 0.22;
+  }
+  if (/\b(thanks|thank you|sounds good|great|awesome|perfect)\b/.test(text)) {
+    score -= 0.08;
+  }
+  if (/\b(later|next week|sometime|not urgent|no rush)\b/.test(text)) {
+    score += 0.2;
+  }
+  if (normalizeText(message.preview).length < 60) {
+    score += 0.08;
+  }
+  if (lead?.variant && /email/i.test(lead.variant)) {
+    score -= 0.05;
+  }
+
+  score = clamp(score, 0, 1);
+  const exact = minMinutes + (maxMinutes - minMinutes) * score;
+  return Math.round(exact);
+}
+
+function chooseDelayMinutes(message, lead) {
+  if (DEFAULT_AUTO_REPLY_DELAY_MODE === 'random') {
+    return randomDelayMinutes();
+  }
+  return adaptiveDelayMinutes(message, lead);
+}
+
+function upsertMessageState(state, message, lead) {
+  const existing = state.messages[message.messageId] || {};
+  if (!existing.firstSeenAt) {
+    existing.firstSeenAt = new Date().toISOString();
+  }
+  if (!existing.dueAt && DEFAULT_AUTO_REPLY && lead) {
+    const delayMinutes = chooseDelayMinutes(message, lead);
+    const dueAt = new Date(Date.now() + delayMinutes * 60 * 1000);
+    existing.dueAt = dueAt.toISOString();
+    existing.delayMinutes = delayMinutes;
+  }
+  existing.subject = message.subject;
+  existing.fromEmail = message.fromEmail;
+  existing.leadName = lead?.name || existing.leadName || '';
+  state.messages[message.messageId] = existing;
+  return existing;
+}
+
+function backfillPendingAutoReplies(state, leadMap) {
+  if (!DEFAULT_AUTO_REPLY) return;
+
+  for (const meta of Object.values(state.messages || {})) {
+    if (!meta || meta.autoRepliedAt || meta.dueAt) continue;
+    const fromEmail = normalizeEmail(meta.fromEmail);
+    if (!fromEmail) continue;
+    const lead = leadMap.get(fromEmail);
+    if (!lead) continue;
+
+    const syntheticMessage = {
+      subject: meta.subject || '',
+      preview: '',
+      fromEmail,
+    };
+    const delayMinutes = chooseDelayMinutes(syntheticMessage, lead);
+    meta.dueAt = new Date(Date.now() + delayMinutes * 60 * 1000).toISOString();
+    meta.delayMinutes = delayMinutes;
+    meta.leadName = lead.name || meta.leadName || '';
+  }
+}
+
+function buildAlert(messages) {
+  const newest = messages[0];
+  const summary = messages.length === 1
+    ? `Unread inbox reply from ${newest.from}: ${newest.subject}`
+    : `${messages.length} unread inbox messages need review`;
+  const actionItems = messages.slice(0, 5).map((message) => {
+    const date = message.date ? ` (${message.date})` : '';
+    return `${message.from}: ${message.subject}${date}`;
+  });
+  const lines = [
+    summary,
+    '',
+    ...messages.map((message) => {
+      const preview = message.preview ? `\nPreview: ${message.preview}` : '';
+      const replyTo = message.replyTo ? `\nReply-To: ${message.replyTo}` : '';
+      const date = message.date ? `\nDate: ${message.date}` : '';
+      return `From: ${message.from}\nSubject: ${message.subject}${date}${replyTo}${preview}`;
+    }),
+    '',
+    'Useful commands:',
+    '- ask-inbox',
+    '- ask-next',
+  ];
+
+  return {
+    subject: `[3dvr-agent] inbox attention: ${summary}`,
+    summary,
+    actionItems,
+    text: lines.join('\n'),
+  };
+}
+
+function buildReplySubject(subject) {
+  const normalized = formatSubject(subject);
+  return /^re:/i.test(normalized) ? normalized : `Re: ${normalized}`;
+}
+
+function firstName(name, email) {
+  const raw = normalizeText(name || '').split(/\s+/)[0];
+  if (raw) return raw;
+  const fallback = normalizeText(email).split('@')[0];
+  if (!fallback) return 'there';
+  return fallback.replace(/[._-]+/g, ' ').split(/\s+/)[0];
+}
+
+function buildReplyText(lead, message) {
+  const greeting = firstName(lead?.name, message.fromEmail);
+  return [
+    `Hi ${greeting},`,
+    '',
+    'Thanks for getting back to me.',
+    'I wanted to give your note a little space before replying.',
+    'If you send over the main thing you want help with, I can suggest the simplest next step and the fastest way to handle it.',
+    '',
+    `${DEFAULT_REPLY_SENDER_NAME}`,
+    DEFAULT_REPLY_SENDER_EMAIL,
+  ].join('\n');
+}
+
+function buildReferences(message) {
+  const parts = [];
+  if (message.references) {
+    parts.push(message.references);
+  }
+  if (message.messageId && !parts.join(' ').includes(message.messageId)) {
+    parts.push(message.messageId);
+  }
+  return normalizeText(parts.join(' '));
+}
+
+async function sendPortalAlert(alert) {
+  if (!DEFAULT_PORTAL_EMAIL_ENDPOINT) {
+    return { ok: false, reason: 'portal email endpoint not configured' };
+  }
+  if (!DEFAULT_PORTAL_EMAIL_TOKEN) {
+    return { ok: false, reason: 'portal email token not configured' };
+  }
+  if (!DEFAULT_NOTIFY_EMAIL) {
+    return { ok: false, reason: 'notify email not configured' };
+  }
+
+  const response = await fetch(DEFAULT_PORTAL_EMAIL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${DEFAULT_PORTAL_EMAIL_TOKEN}`,
+    },
+    body: JSON.stringify({
+      mode: 'operator-alert',
+      to: [DEFAULT_NOTIFY_EMAIL],
+      subject: alert.subject,
+      summary: alert.summary,
+      text: alert.text,
+      actionItems: alert.actionItems,
+      commands: ['ask-inbox', 'ask-next'],
+      metadata: {
+        mailbox: DEFAULT_MAILBOX,
+        unreadMessages: String(alert.actionItems.length),
+      },
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: payload?.error || `portal email request failed: ${response.status}`,
+      status: response.status,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    to: DEFAULT_NOTIFY_EMAIL,
+  };
+}
+
+async function sendLeadReply(message, lead) {
+  if (!DEFAULT_PORTAL_EMAIL_ENDPOINT) {
+    return { ok: false, reason: 'portal email endpoint not configured' };
+  }
+  if (!DEFAULT_PORTAL_EMAIL_TOKEN) {
+    return { ok: false, reason: 'portal email token not configured' };
+  }
+
+  const response = await fetch(DEFAULT_PORTAL_EMAIL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${DEFAULT_PORTAL_EMAIL_TOKEN}`,
+    },
+    body: JSON.stringify({
+      mode: 'lead-outreach',
+      to: [message.replyToEmail || message.fromEmail],
+      subject: buildReplySubject(message.subject),
+      headline: 'Thanks for getting back to me.',
+      text: buildReplyText(lead, message),
+      senderName: DEFAULT_REPLY_SENDER_NAME,
+      senderEmail: DEFAULT_REPLY_SENDER_EMAIL,
+      inReplyTo: message.messageId,
+      references: buildReferences(message),
+    }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: payload?.error || `portal lead reply failed: ${response.status}`,
+      status: response.status,
+    };
+  }
+
+  return {
+    ok: true,
+    status: response.status,
+    to: message.replyToEmail || message.fromEmail,
+    subject: buildReplySubject(message.subject),
+  };
+}
+
+function canSendAutoReply(state) {
+  const gapMs = Math.max(0, DEFAULT_AUTO_REPLY_MIN_GAP_MINUTES) * 60 * 1000;
+  if (!gapMs) return true;
+  const lastSent = normalizeText(state.lastAutoReplyAt);
+  if (!lastSent) return true;
+  const elapsed = Date.now() - new Date(lastSent).getTime();
+  return Number.isFinite(elapsed) && elapsed >= gapMs;
+}
+
+function pickAutoReplyCandidates(messages, leadMap, state) {
+  if (!DEFAULT_AUTO_REPLY) return [];
+
+  return messages
+    .map((message) => {
+      const lead = leadMap.get(message.replyToEmail) || leadMap.get(message.fromEmail);
+      if (!lead) return null;
+      const meta = state.messages[message.messageId];
+      if (!meta || !meta.dueAt || meta.autoRepliedAt) return null;
+      const dueAt = new Date(meta.dueAt).getTime();
+      if (!Number.isFinite(dueAt) || dueAt > Date.now()) return null;
+      return { message, lead, meta };
+    })
+    .filter(Boolean)
+    .slice(0, Math.max(0, DEFAULT_AUTO_REPLY_LIMIT));
+}
+
+function pruneObjectEntries(value, limit = 300) {
+  return Object.fromEntries(
+    Object.entries(value || {})
+      .sort((left, right) => String(right[1]?.firstSeenAt || right[1] || '').localeCompare(String(left[1]?.firstSeenAt || left[1] || '')))
+      .slice(0, limit)
+  );
+}
+
+async function main() {
+  let options;
+  try {
+    options = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    console.error(error.message || error);
+    usage();
+    process.exit(1);
+  }
+
+  if (options.help) {
+    usage();
+    return;
+  }
+
+  const state = loadState();
+  const unread = await loadUnreadMessages(options.limit);
+  const contactedLeadMap = loadContactedLeadMap();
+
+  unread.forEach((message) => {
+    const lead = contactedLeadMap.get(message.replyToEmail) || contactedLeadMap.get(message.fromEmail);
+    upsertMessageState(state, message, lead);
+  });
+  backfillPendingAutoReplies(state, contactedLeadMap);
+
+  if (!unread.length) {
+    console.log('No unread inbox messages.');
+    state.messages = pruneObjectEntries(state.messages, 500);
+    saveState(state);
+    return;
+  }
+
+  console.log(`Unread inbox messages: ${unread.length}`);
+  unread.forEach((message) => {
+    console.log(`- ${message.from} | ${message.subject}`);
+  });
+
+  const fresh = unread.filter((message) => !state.seen[message.messageId]);
+  if (fresh.length) {
+    const alert = buildAlert(fresh);
+    if (options.dryRun) {
+      console.log('\nDry run alert preview:\n');
+      console.log(alert.text);
+    } else {
+      const alertResult = await sendPortalAlert(alert);
+      if (!alertResult.ok) {
+        throw new Error(alertResult.reason || 'Unable to send inbox alert.');
+      }
+      state.lastAlertAt = new Date().toISOString();
+      console.log(`Alerted ${alertResult.to} about ${fresh.length} inbox message(s).`);
+      fresh.forEach((message) => {
+        state.seen[message.messageId] = message.date || new Date().toISOString();
+      });
+    }
+  } else {
+    console.log('No newly surfaced unread messages.');
+  }
+
+  const autoReplyCandidates = pickAutoReplyCandidates(unread, contactedLeadMap, state);
+  if (DEFAULT_AUTO_REPLY && autoReplyCandidates.length) {
+    if (!canSendAutoReply(state)) {
+      console.log('Auto-reply waiting for the minimum gap window.');
+    } else if (options.dryRun) {
+      autoReplyCandidates.forEach(({ message, lead, meta }) => {
+        console.log('\nDry run auto-reply preview:\n');
+        console.log(`Lead: ${lead.name}`);
+        console.log(`Due at: ${meta.dueAt}`);
+        console.log(`To: ${message.replyToEmail || message.fromEmail}`);
+        console.log(`Subject: ${buildReplySubject(message.subject)}`);
+        console.log(buildReplyText(lead, message));
+      });
+    } else {
+      for (const { message, lead, meta } of autoReplyCandidates) {
+        if (!canSendAutoReply(state)) break;
+        const result = await sendLeadReply(message, lead);
+        if (!result.ok) {
+          console.warn(result.reason || `Unable to auto-reply to ${lead.name || message.from}`);
+          continue;
+        }
+        meta.autoRepliedAt = new Date().toISOString();
+        state.lastAutoReplyAt = meta.autoRepliedAt;
+        console.log(`Auto-replied to ${lead.name || message.from} -> ${result.to}`);
+      }
+    }
+  }
+
+  state.seen = pruneObjectEntries(state.seen, 500);
+  state.messages = pruneObjectEntries(state.messages, 500);
+  saveState(state);
+}
+
+main().catch((error) => {
+  console.error(error.message || error);
+  process.exit(1);
+});
