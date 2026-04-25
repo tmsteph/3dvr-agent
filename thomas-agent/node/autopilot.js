@@ -31,6 +31,8 @@ const DEFAULT_RADIUS_KM = parseInteger(process.env.THREEDVR_AUTOPILOT_RADIUS_KM,
 const DEFAULT_EMAIL_MODE = String(process.env.THREEDVR_AUTOPILOT_EMAIL_MODE || 'action').trim().toLowerCase();
 const DEFAULT_EMAIL_COOLDOWN_HOURS = parseInteger(process.env.THREEDVR_AUTOPILOT_EMAIL_COOLDOWN_HOURS, 12);
 const DEFAULT_EMAIL_TRANSPORT = String(process.env.THREEDVR_AUTOPILOT_EMAIL_TRANSPORT || 'portal').trim().toLowerCase();
+const DEFAULT_AUTO_SEND = /^(1|true|yes|on)$/i.test(String(process.env.THREEDVR_AUTOPILOT_AUTO_SEND || '').trim());
+const DEFAULT_AUTO_SEND_LIMIT = parseInteger(process.env.THREEDVR_AUTOPILOT_AUTO_SEND_LIMIT, 1);
 const DEFAULT_NOTIFY_EMAIL = normalizeEmail(
   process.env.THREEDVR_AUTOPILOT_NOTIFY_EMAIL
   || process.env.GMAIL_USER
@@ -52,7 +54,8 @@ const DEFAULT_CODEX_REPO = process.env.THREEDVR_AUTOPILOT_CODEX_REPO || path.joi
 
 function splitList(value) {
   return String(value || '')
-    .split(/[,\n;]+/)
+    .split(/[,
+;]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -108,6 +111,8 @@ Environment:
   THREEDVR_AUTOPILOT_EMAIL_MODE          action | always | never
   THREEDVR_AUTOPILOT_EMAIL_COOLDOWN_HOURS dedupe window for repeated emails
   THREEDVR_AUTOPILOT_EMAIL_TRANSPORT     portal | auto | gmail
+  THREEDVR_AUTOPILOT_AUTO_SEND           true to send first-touch email automatically for mailto leads
+  THREEDVR_AUTOPILOT_AUTO_SEND_LIMIT     max automated outreach sends per run
   THREEDVR_AUTOPILOT_EMAIL_ENDPOINT      portal email relay endpoint
   THREEDVR_AUTOPILOT_EMAIL_TOKEN         shared token for portal email relay
   THREEDVR_AUTOPILOT_EMAIL_TOKEN_FILE    optional file path for shared relay token
@@ -234,6 +239,30 @@ function topLeadNames(rows, status, limit = 3) {
     .slice(0, limit)
     .map((row) => row.name)
     .filter(Boolean);
+}
+
+function outreachPriority(row) {
+  const link = normalizeText(row.link);
+  const contact = normalizeText(row.contact);
+  if (/^mailto:/i.test(contact)) return 4;
+  if (/^https?:\/\//i.test(contact)) return 3;
+  if (/^https?:\/\//i.test(link)) return 2;
+  if (contact) return 1;
+  return 0;
+}
+
+function pickAutoSendLeads(rows, limit) {
+  return rows
+    .filter((row) => normalizeText(row.status).toLowerCase() === 'new')
+    .filter((row) => /^mailto:/i.test(normalizeText(row.contact)))
+    .sort((left, right) => {
+      const dateCompare = normalizeText(right.date).localeCompare(normalizeText(left.date));
+      if (dateCompare) return dateCompare;
+      const priorityCompare = outreachPriority(right) - outreachPriority(left);
+      if (priorityCompare) return priorityCompare;
+      return normalizeText(left.name).localeCompare(normalizeText(right.name));
+    })
+    .slice(0, Math.max(0, limit));
 }
 
 function buildCombos(locations, categories) {
@@ -564,6 +593,12 @@ function buildActionItems(summary) {
   if (summary.counts.replied > 0) {
     actions.push(`Reply to warm leads: ${summary.topReplied.join(', ') || `${summary.counts.replied} replied lead(s)`}`);
   }
+  if (Array.isArray(summary.autoSent) && summary.autoSent.length > 0) {
+    const delivered = summary.autoSent.filter((entry) => entry.ok).map((entry) => entry.name);
+    if (delivered.length) {
+      actions.push(`Auto-sent first outreach to ${delivered.join(', ')}`);
+    }
+  }
   if (summary.counts.new >= DEFAULT_NOTIFY_NEW_LEADS) {
     actions.push(`Review/send new outreach: ${summary.topNew.join(', ') || `${summary.counts.new} new lead(s)`}`);
   }
@@ -613,6 +648,9 @@ function buildEmail(summary, actions) {
   }
   if (summary.topReplied.length) {
     lines.push(`Warm leads: ${summary.topReplied.join(', ')}`);
+  }
+  if (summary.autoSent?.length) {
+    lines.push(`Auto-sent outreach: ${summary.autoSent.filter((entry) => entry.ok).map((entry) => entry.name).join(', ') || 'none'}`);
   }
   if (summary.commands.length) {
     lines.push('');
@@ -817,6 +855,26 @@ async function main() {
     }
   }
 
+  const autoSent = [];
+  if (DEFAULT_AUTO_SEND && !options.dryRun) {
+    const candidates = pickAutoSendLeads(readLeads(LEADS_FILE), DEFAULT_AUTO_SEND_LIMIT);
+    for (const candidate of candidates) {
+      const sendResult = await runScript('ask-send', ['--auto', '--mark', candidate.name]);
+      autoSent.push({
+        name: candidate.name,
+        ok: sendResult.ok,
+        command: sendResult.command,
+        stdout: (sendResult.stdout || '').trim(),
+        stderr: (sendResult.stderr || '').trim(),
+        error: sendResult.ok ? '' : (sendResult.error || sendResult.stderr || 'automatic outreach failed'),
+      });
+      commands.push(`ask-send --auto --mark "${candidate.name}"`);
+      if (!sendResult.ok) {
+        errors.push(`auto-send failed for ${candidate.name}: ${sendResult.error || sendResult.stderr || 'unknown error'}`);
+      }
+    }
+  }
+
   const finalRows = readLeads(LEADS_FILE);
   const counts = countStatuses(finalRows);
   const topNew = topLeadNames(finalRows, 'new');
@@ -863,6 +921,7 @@ async function main() {
     openAiCosts,
     topNew,
     topReplied,
+    autoSent,
     commands: Array.from(new Set(commands)),
     errors,
   };

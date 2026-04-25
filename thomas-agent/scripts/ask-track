@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
 mkdir -p "$(dirname "$FILE")"
 [ ! -f "$FILE" ] && echo "name,link,contact,status,date,variant" > "$FILE"
 
@@ -9,7 +11,19 @@ case "$1" in
   nurture) awk -F, -v name="$2" -v v="$3" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$4="nurture"; if(v!="") $6=v}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Nurture: $2 ($3)" ;;
   reply) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$4="replied"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Replied: $2" ;;
   close) awk -F, -v name="$2" 'BEGIN{OFS=","} NR==1{print;next} $1==name{$4="closed"}1' "$FILE" > "$FILE.tmp" && mv "$FILE.tmp" "$FILE" && echo "Closed: $2" ;;
-  new) awk -F, 'NR==1{next} $4=="new"{print "[ ]",$1,"->",($3!=""?$3:$2)}' "$FILE" ;;
+  new) awk -F, '
+    function priority(link, contact) {
+      if (contact ~ /^mailto:/) return 4;
+      if (contact ~ /^https?:\/\//) return 3;
+      if (link ~ /^https?:\/\//) return 2;
+      if (contact != "") return 1;
+      return 0;
+    }
+
+    NR > 1 && $4 == "new" {
+      print $5 "|" priority($2, $3) "|" NR "|[ ] " $1 " -> " ($3 != "" ? $3 : $2);
+    }
+  ' "$FILE" | sort -t'|' -k1,1r -k2,2nr -k3,3nr | cut -d'|' -f4- ;;
   followup) awk -F, 'NR==1{next} $4=="contacted"{print "[x]",$1,"->",($3!=""?$3:$2),"variant:",($6!=""?$6:"-")}' "$FILE" ;;
   nurture-list) awk -F, 'NR==1{next} $4=="nurture"{print "[~]",$1,"->",($3!=""?$3:$2),"note:",($6!=""?$6:"-")}' "$FILE" ;;
   view) awk -F, 'BEGIN{OFS=","} NR==1{print;next} {print $1,$4,$6}' "$FILE" ;;

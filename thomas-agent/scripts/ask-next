@@ -5,7 +5,23 @@ source "$SCRIPT_DIR/lib/platform.sh"
 FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
 LAUNCH_URL="https://3dvr.tech/launch-in-3-days.html"
 
-line="$(awk -F, 'NR>1 && $4=="new" && ($2!="" || $3!="") {print; exit}' "$FILE")"
+pick_priority() {
+  awk -F, '
+    function priority(link, contact) {
+      if (contact ~ /^mailto:/) return 4;
+      if (contact ~ /^https?:\/\//) return 3;
+      if (link ~ /^https?:\/\//) return 2;
+      if (contact != "") return 1;
+      return 0;
+    }
+
+    NR > 1 && $4 == "new" && ($2 != "" || $3 != "") {
+      print $5 "|" priority($2, $3) "|" NR "|" $0;
+    }
+  ' "$FILE" | sort -t'|' -k1,1r -k2,2nr -k3,3nr | head -n1 | cut -d'|' -f4-
+}
+
+line="$(pick_priority)"
 
 if [ -z "$line" ]; then
   echo "No usable new leads."

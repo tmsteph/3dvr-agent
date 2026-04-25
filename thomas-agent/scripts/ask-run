@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
 
 echo "== 3dvr run =="
 echo
@@ -8,7 +11,7 @@ ask-crawl || true
 echo
 
 echo "[2/3] Enrich step..."
-if [ -f "$HOME/3dvr-agent/thomas-agent/leads.csv" ]; then
+if [ -f "$FILE" ]; then
   ask-enrich || true
 else
   echo "No leads file yet, skipping enrich."

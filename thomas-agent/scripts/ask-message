@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
-FILE="$HOME/3dvr-agent/thomas-agent/leads.csv"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
 LAUNCH_URL="https://3dvr.tech/launch-in-3-days.html"
 mode="${1:-a}"
 target="$2"
