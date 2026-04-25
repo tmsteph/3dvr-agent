@@ -6,7 +6,8 @@ A local command-line system for:
 
 ## Sales Engine
 
-export PATH="$HOME/3dvr-agent/thomas-agent/scripts:$PATH"
+cd /data/data/com.termux/files/home/3dvr-agent
+export PATH="$(pwd)/thomas-agent/scripts:$PATH"
 
 ### Workflow
 
@@ -28,7 +29,7 @@ ask-send --enrich --mark "Lead Name"
 - ask-track → manage pipeline, including `new`, `contact`, `nurture`, `reply`, `close`
 - ask-next → next lead + ready opener + launch-page follow-up
 - ask-message → outreach message variants and launch-page follow-up
-- ask-send → copy opener, open email/contact page, optionally enrich first, and optionally mark contacted
+- ask-send → copy opener, open email/contact page, optionally enrich first, optionally send direct email, and optionally mark contacted
 - ask-artifact → store outreach drafts and screenshots in Gun for later reuse
 - ask-sales → outreach messages
 - ask-reply → reply messages
@@ -90,6 +91,19 @@ ask-send --enrich "Dark Horse Coffee Roasters"
 
 If an email is found, `ask-send` opens a prefilled `mailto:` draft. If a form or contact page is found, it copies the message and opens the page in the browser. Add `--mark` when you want it to mark the lead contacted after opening.
 
+Send directly instead of opening a draft:
+
+```sh
+ask-send --auto --mark "Dark Horse Coffee Roasters"
+```
+
+This only works for direct email leads and requires:
+
+```sh
+export GMAIL_USER="3dvr.tech@gmail.com"
+export GMAIL_APP_PASSWORD="your_app_password"
+```
+
 ### Autonomous Operator
 
 Run one unattended cycle:
@@ -120,6 +134,7 @@ The operator:
 ```text
 - refills the lead queue when new leads are low
 - enriches weak contact targets
+- auto-sends first-touch email for direct-email leads when enabled
 - stores run snapshots in Gun and local state
 - emails you only when action is needed, errors happen, or spend guardrails trip
 ```
@@ -136,6 +151,8 @@ export THREEDVR_AUTOPILOT_EMAIL_MODE="action"
 export THREEDVR_AUTOPILOT_EMAIL_TRANSPORT="portal"
 export THREEDVR_AUTOPILOT_EMAIL_ENDPOINT="https://portal.3dvr.tech/api/calendar/reminder-email"
 export THREEDVR_AUTOPILOT_EMAIL_TOKEN="shared_operator_token"
+export THREEDVR_AUTOPILOT_AUTO_SEND="true"
+export THREEDVR_AUTOPILOT_AUTO_SEND_LIMIT=1
 ```
 
 Portal relay is preferred. Local Gmail stays available as an optional fallback:
