@@ -1,5 +1,21 @@
 const nodemailer = require('nodemailer');
 
+const DEFAULT_TRANSPORT = normalizeText(
+  process.env.THREEDVR_OUTREACH_EMAIL_TRANSPORT
+  || process.env.THREEDVR_AUTOPILOT_EMAIL_TRANSPORT
+  || 'portal'
+).toLowerCase();
+const DEFAULT_PORTAL_EMAIL_ENDPOINT = normalizeText(
+  process.env.THREEDVR_OUTREACH_EMAIL_ENDPOINT
+  || process.env.THREEDVR_AUTOPILOT_EMAIL_ENDPOINT
+  || 'https://portal.3dvr.tech/api/calendar/reminder-email'
+);
+const DEFAULT_PORTAL_EMAIL_TOKEN = normalizeText(
+  process.env.THREEDVR_OUTREACH_EMAIL_TOKEN
+  || process.env.THREEDVR_AUTOPILOT_EMAIL_TOKEN
+  || process.env.AGENT_OPERATOR_EMAIL_TOKEN
+);
+
 function normalizeText(value) {
   return String(value || '').trim();
 }
@@ -42,6 +58,58 @@ function parseArgs(argv) {
   return options;
 }
 
+async function sendViaPortal(options) {
+  if (!DEFAULT_PORTAL_EMAIL_ENDPOINT) {
+    throw new Error('THREEDVR_OUTREACH_EMAIL_ENDPOINT is not configured.');
+  }
+  if (!DEFAULT_PORTAL_EMAIL_TOKEN) {
+    throw new Error('THREEDVR_OUTREACH_EMAIL_TOKEN is not configured.');
+  }
+
+  const senderEmail = normalizeEmail(process.env.GMAIL_USER) || '3dvr.tech@gmail.com';
+  const response = await fetch(DEFAULT_PORTAL_EMAIL_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${DEFAULT_PORTAL_EMAIL_TOKEN}`,
+    },
+    body: JSON.stringify({
+      mode: 'lead-outreach',
+      to: [options.to],
+      subject: options.subject,
+      headline: 'Quick note from 3DVR',
+      text: options.text,
+      senderName: 'Thomas @ 3DVR',
+      senderEmail,
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload?.error || `Portal outreach email failed: ${response.status}`);
+  }
+}
+
+async function sendViaGmail(options) {
+  const user = normalizeEmail(process.env.GMAIL_USER);
+  const pass = normalizeText(process.env.GMAIL_APP_PASSWORD);
+  if (!(user && pass)) {
+    throw new Error('GMAIL_USER and GMAIL_APP_PASSWORD are required for Gmail outreach email.');
+  }
+
+  const transport = nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass },
+  });
+
+  await transport.sendMail({
+    from: `"Thomas @ 3dvr.tech" <${user}>`,
+    to: options.to,
+    subject: options.subject,
+    text: options.text,
+  });
+}
+
 async function main() {
   let options;
   try {
@@ -62,24 +130,18 @@ async function main() {
     process.exit(1);
   }
 
-  const user = normalizeEmail(process.env.GMAIL_USER);
-  const pass = normalizeText(process.env.GMAIL_APP_PASSWORD);
-  if (!(user && pass)) {
-    console.error('GMAIL_USER and GMAIL_APP_PASSWORD are required for automatic outreach email.');
-    process.exit(1);
+  if (DEFAULT_TRANSPORT === 'gmail') {
+    await sendViaGmail(options);
+  } else if (DEFAULT_TRANSPORT === 'auto') {
+    try {
+      await sendViaPortal(options);
+    } catch (error) {
+      await sendViaGmail(options);
+      console.warn(error.message || error);
+    }
+  } else {
+    await sendViaPortal(options);
   }
-
-  const transport = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user, pass },
-  });
-
-  await transport.sendMail({
-    from: `"Thomas @ 3dvr.tech" <${user}>`,
-    to: options.to,
-    subject: options.subject,
-    text: options.text,
-  });
 
   console.log(`Sent outreach email to ${options.to}`);
 }

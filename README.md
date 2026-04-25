@@ -100,6 +100,15 @@ ask-send --auto --mark "Dark Horse Coffee Roasters"
 This only works for direct email leads and requires:
 
 ```sh
+export THREEDVR_OUTREACH_EMAIL_TRANSPORT="portal"
+export THREEDVR_OUTREACH_EMAIL_ENDPOINT="https://portal.3dvr.tech/api/calendar/reminder-email"
+export THREEDVR_OUTREACH_EMAIL_TOKEN="shared_operator_token"
+```
+
+Optional Gmail fallback:
+
+```sh
+export THREEDVR_OUTREACH_EMAIL_TRANSPORT="auto"
 export GMAIL_USER="3dvr.tech@gmail.com"
 export GMAIL_APP_PASSWORD="your_app_password"
 ```
