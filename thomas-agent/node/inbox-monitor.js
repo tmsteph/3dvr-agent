@@ -31,9 +31,9 @@ const DEFAULT_MAILBOX = normalizeText(process.env.THREEDVR_INBOX_MAILBOX || 'INB
 const DEFAULT_POLL_LIMIT = parseInteger(process.env.THREEDVR_INBOX_LIMIT, 10);
 const DEFAULT_AUTO_REPLY = /^(1|true|yes|on)$/i.test(String(process.env.THREEDVR_INBOX_AUTO_REPLY || '').trim());
 const DEFAULT_AUTO_REPLY_LIMIT = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_LIMIT, 1);
-const DEFAULT_AUTO_REPLY_MIN_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES, 18);
-const DEFAULT_AUTO_REPLY_MAX_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES, 47);
-const DEFAULT_AUTO_REPLY_MIN_GAP_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES, 20);
+const DEFAULT_AUTO_REPLY_MIN_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES, 0);
+const DEFAULT_AUTO_REPLY_MAX_DELAY_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES, 0);
+const DEFAULT_AUTO_REPLY_MIN_GAP_MINUTES = parseInteger(process.env.THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES, 0);
 const DEFAULT_AUTO_REPLY_DELAY_MODE = normalizeText(process.env.THREEDVR_INBOX_AUTO_REPLY_DELAY_MODE || 'adaptive').toLowerCase();
 const DEFAULT_REPLY_SENDER_NAME = normalizeText(process.env.THREEDVR_INBOX_AUTO_REPLY_SENDER_NAME || 'Thomas @ 3DVR');
 const DEFAULT_REPLY_SENDER_EMAIL = normalizeEmail(
@@ -470,17 +470,64 @@ function firstName(name, email) {
   return fallback.replace(/[._-]+/g, ' ').split(/\s+/)[0];
 }
 
-function buildReplyText(lead, message) {
+function normalizeThreadSubject(subject) {
+  return formatSubject(subject).replace(/^(re|fwd?):\s*/i, '').toLowerCase();
+}
+
+function countThreadAutoReplies(state, message) {
+  const subject = normalizeThreadSubject(message.subject);
+  const fromEmail = normalizeEmail(message.fromEmail);
+  if (!(subject && fromEmail)) return 0;
+
+  return Object.values(state.messages || {}).filter((meta) => (
+    meta
+    && meta.autoRepliedAt
+    && normalizeEmail(meta.fromEmail) === fromEmail
+    && normalizeThreadSubject(meta.subject) === subject
+  )).length;
+}
+
+function chooseReplyLines(message, repeatCount) {
+  const preview = normalizeText(message.preview).replace(/\s+/g, ' ');
+  const isTest = /^test\b/i.test(preview) || /\bautomation test\b/i.test(message.subject);
+
+  if (isTest) {
+    return repeatCount > 0
+      ? ['Got it, this test reply came through too.']
+      : ['Got it, this test reply came through and the automation is responding.'];
+  }
+
+  if (repeatCount === 0) {
+    return [
+      'Thanks for getting back to me.',
+      'What would you like help with first?',
+    ];
+  }
+
+  const variants = [
+    ['I saw this follow-up too.', 'Send me the main detail and I will keep the next step simple.'],
+    ['Got your follow-up.', 'What is the one thing you want handled first?'],
+    ['I am tracking this thread.', 'A quick note on the priority is enough to point me in the right direction.'],
+  ];
+  return variants[(repeatCount - 1) % variants.length];
+}
+
+function buildReplyHeadline(message, state) {
+  const repeatCount = countThreadAutoReplies(state, message);
+  const preview = normalizeText(message.preview).replace(/\s+/g, ' ');
+  if (/^test\b/i.test(preview) || /\bautomation test\b/i.test(message.subject)) {
+    return repeatCount > 0 ? 'Test follow-up received.' : 'Test reply received.';
+  }
+  return repeatCount > 0 ? 'Got your follow-up.' : 'Thanks for getting back to me.';
+}
+
+function buildReplyText(lead, message, state) {
   const greeting = firstName(lead?.name, message.fromEmail);
+  const repeatCount = countThreadAutoReplies(state, message);
   return [
     `Hi ${greeting},`,
     '',
-    'Thanks for getting back to me.',
-    'I wanted to give your note a little space before replying.',
-    'If you send over the main thing you want help with, I can suggest the simplest next step and the fastest way to handle it.',
-    '',
-    `${DEFAULT_REPLY_SENDER_NAME}`,
-    DEFAULT_REPLY_SENDER_EMAIL,
+    ...chooseReplyLines(message, repeatCount),
   ].join('\n');
 }
 
@@ -543,7 +590,7 @@ async function sendPortalAlert(alert) {
   };
 }
 
-async function sendLeadReply(message, lead) {
+async function sendLeadReply(message, lead, state) {
   if (!DEFAULT_PORTAL_EMAIL_ENDPOINT) {
     return { ok: false, reason: 'portal email endpoint not configured' };
   }
@@ -561,8 +608,8 @@ async function sendLeadReply(message, lead) {
       mode: 'lead-outreach',
       to: [message.replyToEmail || message.fromEmail],
       subject: buildReplySubject(message.subject),
-      headline: 'Thanks for getting back to me.',
-      text: buildReplyText(lead, message),
+      headline: buildReplyHeadline(message, state),
+      text: buildReplyText(lead, message, state),
       senderName: DEFAULT_REPLY_SENDER_NAME,
       senderEmail: DEFAULT_REPLY_SENDER_EMAIL,
       inReplyTo: message.messageId,
@@ -690,12 +737,12 @@ async function main() {
         console.log(`Due at: ${meta.dueAt}`);
         console.log(`To: ${message.replyToEmail || message.fromEmail}`);
         console.log(`Subject: ${buildReplySubject(message.subject)}`);
-        console.log(buildReplyText(lead, message));
+        console.log(buildReplyText(lead, message, state));
       });
     } else {
       for (const { message, lead, meta } of autoReplyCandidates) {
         if (!canSendAutoReply(state)) break;
-        const result = await sendLeadReply(message, lead);
+        const result = await sendLeadReply(message, lead, state);
         if (!result.ok) {
           console.warn(result.reason || `Unable to auto-reply to ${lead.name || message.from}`);
           continue;
