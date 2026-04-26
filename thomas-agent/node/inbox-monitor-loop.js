@@ -3,7 +3,7 @@ const { spawn } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
 const RUNNER = path.join(ROOT, 'scripts', 'ask-inbox');
-const INTERVAL_MINUTES = Number.parseInt(process.env.THREEDVR_INBOX_INTERVAL_MINUTES || '5', 10);
+const INTERVAL_MINUTES = Number.parseInt(process.env.THREEDVR_INBOX_INTERVAL_MINUTES || '1', 10);
 const INTERVAL_MS = Math.max(1, Number.isFinite(INTERVAL_MINUTES) ? INTERVAL_MINUTES : 5) * 60 * 1000;
 
 function sleep(ms) {
