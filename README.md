@@ -9,6 +9,19 @@ A local command-line system for:
 cd /data/data/com.termux/files/home/3dvr-agent
 export PATH="$(pwd)/thomas-agent/scripts:$PATH"
 
+### 3dvr CLI
+
+```sh
+3dvr
+3dvr next
+3dvr contacted
+3dvr inbox check
+3dvr status
+3dvr portal
+```
+
+Run `3dvr` with no arguments for the guided cockpit menu.
+
 ### Workflow
 
 ask-crawl --location "La Mesa, CA" --category professional --limit 10 --radius-km 8
@@ -188,10 +201,10 @@ Preview the operator alert without sending it:
 ask-inbox --dry-run
 ```
 
-Keep inbox monitoring running every 5 minutes:
+Keep inbox monitoring running every minute while testing:
 
 ```sh
-export THREEDVR_INBOX_INTERVAL_MINUTES=5
+export THREEDVR_INBOX_INTERVAL_MINUTES=1
 ask-inbox-daemon start
 ask-inbox-daemon status
 ask-inbox-daemon logs
@@ -211,12 +224,12 @@ Optional paced auto-replies for leads already marked `contacted`:
 ```sh
 export THREEDVR_INBOX_AUTO_REPLY="true"
 export THREEDVR_INBOX_AUTO_REPLY_LIMIT=1
-export THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES=18
-export THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES=47
-export THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES=20
+export THREEDVR_INBOX_AUTO_REPLY_MIN_DELAY_MINUTES=0
+export THREEDVR_INBOX_AUTO_REPLY_MAX_DELAY_MINUTES=0
+export THREEDVR_INBOX_AUTO_REPLY_MIN_GAP_MINUTES=0
 ```
 
-This only replies to matched `mailto:` leads already in the pipeline as `contacted`, keeps the `Thomas @ 3DVR` identity explicit, and waits through the randomized delay window before sending.
+This only replies to matched `mailto:` leads already in the pipeline as `contacted`, keeps the `Thomas @ 3DVR` identity explicit, and uses the configured delay window before sending.
 
 If you keep the shared token in a private file, `ask-autopilot` will read it automatically from:
 
