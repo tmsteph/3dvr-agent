@@ -1,0 +1,202 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$SCRIPT_DIR/lib/platform.sh"
+
+LEADS_FILE="${THREEDVR_LEADS_FILE:-$ROOT/leads.csv}"
+PORTAL_URL="${THREEDVR_PORTAL_URL:-https://portal.3dvr.tech}"
+
+usage() {
+  cat <<'USAGE'
+3dvr CLI v1
+
+3dvr                     guided menu
+3dvr next                next best lead action
+3dvr status              agent + inbox + leads status
+3dvr portal              open portal
+
+Leads:
+3dvr lead find           crawl/find new leads
+3dvr lead enrich         find contact/about pages
+3dvr lead next           show next lead + message
+3dvr lead open           open current lead
+3dvr lead message        generate outreach message
+3dvr lead contacted      mark current lead contacted
+3dvr lead followup       show follow-ups due
+3dvr lead list           list leads
+
+Inbox:
+3dvr inbox check         check unread/replies
+3dvr inbox watch         run inbox monitor once
+3dvr inbox reply         preview reply helpers
+3dvr inbox send-test     send inbox test email
+
+Agent:
+3dvr agent status|start|stop|logs|restart
+
+Projects:
+3dvr project list|open|new|deploy
+
+Settings:
+3dvr settings [portal|email|relay]
+USAGE
+}
+
+menu() {
+  cat <<'MENU'
+Welcome to 3dvr
+
+What do you want to do?
+
+1) Continue outreach
+2) Check inbox
+3) See agent status
+4) Start/stop background worker
+5) Open portal
+6) Work on a project
+7) Settings
+
+Choose:
+MENU
+  read -r choice
+  case "$choice" in
+    1) exec "$0" next ;;
+    2) exec "$0" inbox check ;;
+    3) exec "$0" status ;;
+    4) exec "$0" agent status ;;
+    5) exec "$0" portal ;;
+    6) exec "$0" project list ;;
+    7) exec "$0" settings ;;
+    *) usage ;;
+  esac
+}
+
+current_lead_name() {
+  [ -f "$LEADS_FILE" ] || return 1
+  awk -F, '
+    function priority(link, contact) {
+      if (contact ~ /^mailto:/) return 4;
+      if (contact ~ /^https?:\/\//) return 3;
+      if (link ~ /^https?:\/\//) return 2;
+      if (contact != "") return 1;
+      return 0;
+    }
+    NR > 1 && $4 == "new" && ($2 != "" || $3 != "") {
+      print $5 "|" priority($2, $3) "|" NR "|" $1;
+    }
+  ' "$LEADS_FILE" | sort -t'|' -k1,1r -k2,2nr -k3,3nr | head -n1 | cut -d'|' -f4-
+}
+
+send_inbox_test() {
+  to="${THREEDVR_INBOX_TEST_EMAIL:-tmsteph1290@gmail.com}"
+  subject="${THREEDVR_INBOX_TEST_SUBJECT:-3DVR inbox copy test}"
+  text="${THREEDVR_INBOX_TEST_TEXT:-Testing the updated auto-reply copy. Reply with Test and the inbox daemon should respond with the short test-specific message.}"
+  node "$ROOT/node/send-outreach-email.js" --to "$to" --subject "$subject" --text "$text"
+}
+
+project_root() {
+  case "${1:-list}" in
+    portal) printf '%s\n' "/data/data/com.termux/files/home/3dvr-portal" ;;
+    web) printf '%s\n' "/data/data/com.termux/files/home/3dvr-web" ;;
+    agent) printf '%s\n' "/data/data/com.termux/files/home/3dvr-agent" ;;
+    tmsteph) printf '%s\n' "/data/data/com.termux/files/home/tmsteph-redesign-2025" ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  "") menu ;;
+  help|-h|--help) usage ;;
+  next) exec "$SCRIPT_DIR/ask-next" ;;
+  contacted)
+    name="$(current_lead_name || true)"
+    [ -n "$name" ] || { echo "No current new lead."; exit 1; }
+    exec "$SCRIPT_DIR/ask-track" contact "$name"
+    ;;
+  status)
+    "$SCRIPT_DIR/ask-status"
+    echo
+    "$SCRIPT_DIR/ask-inbox-daemon" status || true
+    echo
+    "$SCRIPT_DIR/ask-autopilot-daemon" status || true
+    ;;
+  portal) open_url "$PORTAL_URL" ;;
+  start) exec "$0" agent start ;;
+  stop) exec "$0" agent stop ;;
+  logs) exec "$0" agent logs ;;
+  lead)
+    sub="${1:-next}"
+    shift || true
+    case "$sub" in
+      find) exec "$SCRIPT_DIR/ask-crawl" "$@" ;;
+      enrich) exec "$SCRIPT_DIR/ask-enrich" "$@" ;;
+      next) exec "$SCRIPT_DIR/ask-next" "$@" ;;
+      open) exec "$SCRIPT_DIR/ask-send" "$@" ;;
+      message) exec "$SCRIPT_DIR/ask-message" "$@" ;;
+      contacted) exec "$0" contacted ;;
+      followup) exec "$SCRIPT_DIR/ask-track" followup ;;
+      list) exec "$SCRIPT_DIR/ask-track" new ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  inbox)
+    sub="${1:-menu}"
+    shift || true
+    case "$sub" in
+      menu)
+        echo "Inbox"
+        echo "3dvr inbox check"
+        echo "3dvr inbox watch"
+        echo "3dvr inbox reply"
+        echo "3dvr inbox send-test"
+        ;;
+      check) exec "$SCRIPT_DIR/ask-inbox" "$@" ;;
+      watch) exec "$SCRIPT_DIR/ask-inbox-daemon" run-now "$@" ;;
+      reply) exec "$SCRIPT_DIR/ask-reply" "$@" ;;
+      send-test) send_inbox_test ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  agent)
+    sub="${1:-status}"
+    case "$sub" in
+      status) "$SCRIPT_DIR/ask-inbox-daemon" status; "$SCRIPT_DIR/ask-autopilot-daemon" status || true ;;
+      start) "$SCRIPT_DIR/ask-inbox-daemon" start; "$SCRIPT_DIR/ask-autopilot-daemon" start ;;
+      stop) "$SCRIPT_DIR/ask-inbox-daemon" stop; "$SCRIPT_DIR/ask-autopilot-daemon" stop ;;
+      logs) "$SCRIPT_DIR/ask-inbox-daemon" logs; echo; "$SCRIPT_DIR/ask-autopilot-daemon" logs ;;
+      restart) "$0" agent stop || true; "$0" agent start ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  project)
+    sub="${1:-list}"
+    target="${2:-}"
+    case "$sub" in
+      list) printf '%s\n' "3dvr-portal" "3dvr-web" "3dvr-agent" "tmsteph-redesign-2025" ;;
+      open)
+        path="$(project_root "$target" || true)"
+        [ -n "$path" ] || { echo "Use: 3dvr project open portal|web|agent|tmsteph"; exit 1; }
+        echo "$path"
+        ;;
+      new) echo "Create the repo/project, then add it to 3dvr project list." ;;
+      deploy) echo "Use the target repo deploy flow. Portal/web deploys should be verified live." ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  settings)
+    sub="${1:-all}"
+    case "$sub" in
+      all) env | grep -E '^(THREEDVR_|GMAIL_USER=)' | sort || true ;;
+      portal) echo "THREEDVR_PORTAL_URL=${THREEDVR_PORTAL_URL:-https://portal.3dvr.tech}" ;;
+      email) echo "GMAIL_USER=${GMAIL_USER:-unset}"; echo "GMAIL_APP_PASSWORD=${GMAIL_APP_PASSWORD:+set}" ;;
+      relay) echo "THREEDVR_AUTOPILOT_EMAIL_ENDPOINT=${THREEDVR_AUTOPILOT_EMAIL_ENDPOINT:-unset}"; echo "THREEDVR_AUTOPILOT_EMAIL_TOKEN=${THREEDVR_AUTOPILOT_EMAIL_TOKEN:+set}" ;;
+      *) usage; exit 1 ;;
+    esac
+    ;;
+  *) usage; exit 1 ;;
+esac

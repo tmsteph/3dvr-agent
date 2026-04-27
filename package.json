@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "A local command-line system for: - building apps with AI - finding and closing real-world customers",
   "main": "index.js",
+  "bin": {
+    "3dvr": "thomas-agent/scripts/3dvr"
+  },
   "scripts": {
     "test": "node --check thomas-agent/node/send-outreach-email.js && node --check thomas-agent/node/autopilot.js && node --check thomas-agent/node/inbox-monitor.js"
   },
