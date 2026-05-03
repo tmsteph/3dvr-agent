@@ -133,6 +133,27 @@ test('menu accepts direct ask-track commands', async () => {
   }
 });
 
+test('menu does not execute shell syntax in ask-* input', async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), '3dvr-cli-'));
+  const leads = path.join(tmp, 'leads.csv');
+  const sentinel = path.join(tmp, 'sentinel.txt');
+  await writeFile(
+    leads,
+    'name,link,contact,status,score,source,updated\nCasa By Craft,https://casa.example,mailto:hello@casa.example,new,11,test,now\n',
+  );
+
+  try {
+    const { stdout } = await runCliInteractive(`ask-track contact "Casa By Craft"; touch ${sentinel}\nq\n`, {
+      THREEDVR_LEADS_FILE: leads,
+    });
+
+    assert.match(stdout, /Contacted: Casa By Craft/);
+    await assert.rejects(readFile(sentinel, 'utf8'));
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('lead card shows the current lead summary in the menu', async () => {
   const tmp = await mkdtemp(path.join(os.tmpdir(), '3dvr-cli-'));
   const leads = path.join(tmp, 'leads.csv');

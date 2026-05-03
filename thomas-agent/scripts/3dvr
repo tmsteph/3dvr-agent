@@ -151,10 +151,26 @@ run_menu_choice() {
     help|-h|--help) usage ;;
     crm) "$0" lead card ;;
     ask-*)
-      # shellcheck disable=SC2206,SC2086
-      eval "set -- $choice"
-      cmd="$1"
-      shift
+      if command -v python3 >/dev/null 2>&1; then
+        # Use shell-like splitting without evaluating arbitrary input.
+        mapfile -t parts < <(python3 - "$choice" <<'PY'
+import shlex
+import sys
+for part in shlex.split(sys.argv[1]):
+    print(part)
+PY
+)
+      else
+        # Fallback: basic word splitting when Python is unavailable.
+        # This preserves command execution but not quoted arguments.
+        # shellcheck disable=SC2206
+        parts=($choice)
+      fi
+      cmd="${parts[0]:-}"
+      if [ -z "$cmd" ]; then
+        return 0
+      fi
+      set -- "${parts[@]:1}"
       if [ -x "$SCRIPT_DIR/$cmd" ]; then
         exec "$SCRIPT_DIR/$cmd" "$@"
       fi
