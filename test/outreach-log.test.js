@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { execFileSync } = require('node:child_process');
-const { mkdtempSync, readFileSync, rmSync } = require('node:fs');
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
@@ -130,6 +130,31 @@ test('ask-track sent grouped archives entries by route and source', () => {
     assert.match(output, /Template body/);
     assert.match(output, /Local body/);
     assert.match(output, /Form body/);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('ask-track failed updates the lead status with a stable temp file', () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), '3dvr-outreach-failed-'));
+  const leadsPath = path.join(tmp, 'leads.csv');
+  writeFileSync(
+    leadsPath,
+    'name,link,contact,status,date,variant\nBad Lead,https://bad.example,mailto:bad@example.com,new,2026-05-06,opener\n',
+  );
+
+  try {
+    const output = execFileSync(askTrack, ['failed', 'Bad Lead'], {
+      env: {
+        ...process.env,
+        THREEDVR_LEADS_FILE: leadsPath,
+      },
+      encoding: 'utf8',
+    });
+    const leadsText = readFileSync(leadsPath, 'utf8');
+
+    assert.match(output, /Failed: Bad Lead/);
+    assert.match(leadsText, /Bad Lead,https:\/\/bad\.example,mailto:bad@example\.com,failed,2026-05-06,opener/);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
