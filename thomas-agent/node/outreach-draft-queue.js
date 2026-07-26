@@ -127,9 +127,11 @@ function enqueueDraftRequest(lead = {}, options = {}) {
     preview: { recipientId, url: previewUrl },
     instructions: {
       maximumWords: 110,
+      targetWords: 75,
       requiredGreeting: `Hi ${normalizeText(lead.name)} team,`,
       requiredPreviewUrl: previewUrl,
       sender: 'Thomas at 3dvr.tech in San Diego',
+      readingLevel: 'third grade',
       offer: 'A no-cost one-page website draft with no obligation to keep it.',
       prohibited: ['invented observations', 'pricing', 'guarantees', 'hype', 'alternate recipients'],
     },
