@@ -66,7 +66,7 @@ test('backendCommand prints OpenClaw and Codex dispatch commands', () => {
   assert.equal(openclaw.command, 'openclaw');
   assert.deepEqual(openclaw.args.slice(0, 2), ['agent', '--message']);
   assert.match(describeCommand(codex), /^codex 'exec'/);
-  assert.deepEqual(codex.args.slice(1, 4), ['--cd', '/tmp/repo', '--skip-git-repo-check']);
+  assert.deepEqual(codex.args.slice(1, 6), ['--sandbox', 'workspace-write', '--cd', '/tmp/repo', '--skip-git-repo-check']);
 });
 
 test('high-risk task is skipped unless explicitly unsafe', async () => {

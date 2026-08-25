@@ -1,3 +1,4 @@
+const { execFile } = require('node:child_process');
 const { gun } = require('./gun-db');
 const { runAgentTask } = require('./task-orchestrator');
 const { authorizePortalOperatorTask } = require('./operator-forge-auth');
@@ -8,6 +9,30 @@ const EXTERNAL_WRITE_PATTERN = /\b(push|merge|deploy|publish|release|pull reques
 
 function normalizeText(value = '') {
   return String(value || '').trim();
+}
+
+function runGit(repoPath, args, execFileImpl = execFile) {
+  return new Promise((resolve, reject) => {
+    execFileImpl('git', ['-C', repoPath, ...args], { maxBuffer: 5 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) return reject(new Error(stderr || error.message));
+      resolve(String(stdout || ''));
+    });
+  });
+}
+
+async function snapshotRepo(repoPath, options = {}) {
+  const execFileImpl = options.execFileImpl || execFile;
+  try {
+    const [status, diff] = await Promise.all([
+      runGit(repoPath, ['status', '--porcelain=v1', '-uall'], execFileImpl),
+      runGit(repoPath, ['diff', '--no-ext-diff', '--binary', 'HEAD', '--'], execFileImpl),
+    ]);
+    return `${status}
+---diff---
+${diff}`;
+  } catch {
+    return null;
+  }
 }
 
 function forgeRequestsNode(options = {}) {
@@ -94,6 +119,9 @@ async function runForgeRequest(record, options = {}) {
     return { ok: false, skipped: true, reason: edit.reason };
   }
 
+  const snapshotImpl = options.snapshotRepoImpl || snapshotRepo;
+  const beforeSnapshot = await snapshotImpl(auth.repoPath, options);
+
   await updateForgeRequest(record.id, {
     status: 'running',
     workerStartedAt: new Date().toISOString(),
@@ -110,13 +138,20 @@ async function runForgeRequest(record, options = {}) {
       edit.task,
     ], options.hooks || {});
     const summary = normalizeText(result?.reason || result?.result?.stdout || result?.result?.stderr || `ok=${Boolean(result?.ok)}`).slice(0, 2000);
+    const afterSnapshot = await snapshotImpl(auth.repoPath, options);
+    const noChange = Boolean(result?.ok && beforeSnapshot !== null && afterSnapshot !== null && beforeSnapshot === afterSnapshot);
+    const finalSummary = noChange
+      ? normalizeText(`${summary}
+Executor reported success but the repository did not change.`).slice(0, 2000)
+      : summary;
+    const finalOk = Boolean(result?.ok && !noChange);
     await updateForgeRequest(record.id, {
-      status: result?.ok ? 'completed' : result?.skipped ? 'approval_required' : 'failed',
+      status: finalOk ? 'completed' : result?.skipped ? 'approval_required' : 'failed',
       completedAt: new Date().toISOString(),
-      resultSummary: summary,
-      error: result?.ok ? '' : summary,
+      resultSummary: finalSummary,
+      error: finalOk ? '' : finalSummary,
     }, options);
-    return result;
+    return noChange ? { ...result, ok: false, reason: finalSummary } : result;
   } catch (error) {
     const message = error.message || String(error);
     await updateForgeRequest(record.id, {
@@ -155,6 +190,7 @@ module.exports = {
   listForgeRequests,
   runForgeRequest,
   runForgeWorkerOnce,
+  snapshotRepo,
   updateForgeRequest,
 };
 
