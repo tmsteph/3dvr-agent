@@ -5,4 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib/platform.sh"
 
-node "$ROOT/node/autopilot.js" "$@"
+args=("$@")
+if [[ " ${args[*]} " != *" --no-email "* ]]; then
+  if ! node -e 'process.exit(require(process.argv[1]).businessHoursStatus().allowed ? 0 : 1)' "$ROOT/node/send-window.js"; then
+    args+=(--no-email)
+  fi
+fi
+
+exec node "$ROOT/node/autopilot.js" "${args[@]}"
