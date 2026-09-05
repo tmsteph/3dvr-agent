@@ -11,7 +11,13 @@ function runLauncher(windowExit, args = ['--dry-run']) {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), '3dvr-autopilot-launcher-'));
   const log = path.join(temp, 'node.log');
   const fakeNode = path.join(temp, 'node');
-  fs.writeFileSync(fakeNode, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "$NODE_LOG"\nif [ "${1:-}" = "-e" ]; then exit "$WINDOW_EXIT"; fi\nexit 0\n`);
+  fs.writeFileSync(fakeNode, [
+    '#!/usr/bin/env bash',
+    'printf \'%s\\n\' "$*" >> "$NODE_LOG"',
+    'if [ "$1" = "-e" ]; then exit "$WINDOW_EXIT"; fi',
+    'exit 0',
+    '',
+  ].join('\n'));
   fs.chmodSync(fakeNode, 0o755);
 
   const result = spawnSync('bash', [launcher, ...args], {
